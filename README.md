@@ -5,17 +5,6 @@
 
 A terminal-based interface for browsing, solving, and submitting LeetCode problems, built with **Rust** and **Ratatui**.
 
-> ⚠️ **Disclaimer (Please read before judging my code):** > This is 100% a personal hobby project. The codebase is heavily AI-generated, held together by duct tape and prayers, and exists solely because I wanted a convenient way to do LeetCode. It is _not_ a polished product built for promotion, and it's definitely not supposed to impress anyone.
-> **A few crucial notes:**
->
-> - Currently, and for an undefined amount of time, **this tool strictly supports Rust**.
-> - It proudly wears the "It Works On My Machine™" badge. Specifically, it has _only_ been tested with **Rust + Neovim (`nvim`) inside the Ghostty terminal**.
->
-> If you want to use it, fork it, or fix it—you're more than welcome! Just don't expect enterprise-grade architecture.
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Crates.io](https://img.shields.io/crates/v/leetui.svg)](https://crates.io/crates/leetui)
-
 ## Features
 
 - **Browse** all 3000+ problems with instant search and difficulty/status filters
