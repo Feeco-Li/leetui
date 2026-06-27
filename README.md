@@ -126,6 +126,10 @@ This is a hobby project and I'm strictly prioritizing Rust-specific features. Th
 - Feel free to **fork** the repo and do whatever you want with it
 - PRs are welcome -- submit directly, no need to open an issue first
 
+## Original Creator
+
+This project was originally created by **[ab7tr4ct](https://github.com/ab7tr4ct)** (formerly known as `yottaes` on GitHub). The original repository at `https://github.com/yottaes/leetui` has been deleted. This repository exists to preserve the source code so the project remains available to anyone who finds it useful.
+
 ## License
 
-[MIT](https://www.google.com/search?q=LICENSE)
+[MIT](LICENSE)
