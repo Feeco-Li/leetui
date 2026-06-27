@@ -39,7 +39,7 @@ cargo install leetui
 ### From source
 
 ```bash
-git clone https://github.com/yottaes/leetui.git
+git clone https://github.com/Feeco-Li/leetui.git
 cd leetui
 cargo install --path .
 
