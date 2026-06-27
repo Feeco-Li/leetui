@@ -4,7 +4,7 @@ version = "0.1.1"
 edition = "2024"
 description = "A terminal-based interface for browsing, solving, and submitting LeetCode problems"
 license = "MIT"
-repository = "https://github.com/yottaes/leetui"
+repository = "https://github.com/Feeco-Li/leetui"
 keywords = ["leetcode", "tui", "terminal", "rust"]
 categories = ["command-line-utilities"]
 
