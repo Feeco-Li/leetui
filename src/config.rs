@@ -15,6 +15,8 @@ pub struct Config {
     pub cf_clearance: Option<String>,
     #[serde(default)]
     pub user_agent: Option<String>,
+    #[serde(default)]
+    pub solutions_repo_url: Option<String>,
 }
 
 impl Config {

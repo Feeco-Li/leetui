@@ -566,6 +566,11 @@ impl App {
                         } else {
                             Some(state.fields[4].clone())
                         };
+                        let solutions_repo_url = if state.fields[5].is_empty() {
+                            None
+                        } else {
+                            Some(state.fields[5].clone())
+                        };
                         let config = Config {
                             workspace_dir: state.fields[0].clone(),
                             language: state.fields[1].clone(),
@@ -577,6 +582,7 @@ impl App {
                                 .as_ref()
                                 .and_then(|c| c.cf_clearance.clone()),
                             user_agent: self.config.as_ref().and_then(|c| c.user_agent.clone()),
+                            solutions_repo_url,
                         };
                         if let Err(e) = config.save() {
                             self.error_overlay = Some(format!("Failed to save config: {e}"));
@@ -1225,7 +1231,40 @@ impl App {
         };
 
         let workspace = config.expanded_workspace();
-        std::fs::create_dir_all(&workspace).ok();
+
+        if !workspace.exists() {
+            let repo_url = config
+                .solutions_repo_url
+                .as_deref()
+                .filter(|u| !u.is_empty());
+
+            if let Some(url) = repo_url {
+                if let Some(parent) = workspace.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+
+                let clone_status = Command::new("git")
+                    .args(["clone", url])
+                    .arg(&workspace)
+                    .status();
+
+                match clone_status {
+                    Ok(s) if s.success() => {}
+                    Ok(s) => {
+                        self.error_overlay = Some(format!(
+                            "Failed to clone solutions repo '{url}' (status: {s})"
+                        ));
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        self.error_overlay = Some(format!("Failed to run 'git clone': {e}"));
+                        return Ok(());
+                    }
+                }
+            } else {
+                std::fs::create_dir_all(&workspace).ok();
+            }
+        }
 
         match scaffold::scaffold_problem(&workspace, detail, &config.language) {
             Ok(file_path) => {

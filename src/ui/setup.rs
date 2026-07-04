@@ -9,21 +9,23 @@ use ratatui::{
 
 use super::status_bar::render_status_bar;
 
-const FIELD_COUNT: usize = 5;
+const FIELD_COUNT: usize = 6;
 const FIELD_LABELS: [&str; FIELD_COUNT] = [
     "Workspace Directory",
     "Language",
     "Editor",
     "LeetCode Session Cookie",
     "CSRF Token",
+    "Solutions Repo URL",
 ];
-const FIELD_DEFAULTS: [&str; FIELD_COUNT] = ["~/leetcode", "rust", "vim", "", ""];
+const FIELD_DEFAULTS: [&str; FIELD_COUNT] = ["~/leetcode", "rust", "vim", "", "", ""];
 const FIELD_HINTS: [&str; FIELD_COUNT] = [
     "Directory where problem projects will be created",
     "Default language for code snippets (rust, python3, cpp, java, ...)",
     "Editor command to open files (vim, nvim, code, ...)",
     "(Optional) LEETCODE_SESSION cookie value for authentication",
     "(Optional) csrftoken cookie value for authentication",
+    "(Optional) git URL to clone your solutions from if the workspace dir doesn't exist yet",
 ];
 
 pub struct SetupState {
@@ -42,6 +44,7 @@ impl SetupState {
                 FIELD_DEFAULTS[2].to_string(),
                 FIELD_DEFAULTS[3].to_string(),
                 FIELD_DEFAULTS[4].to_string(),
+                FIELD_DEFAULTS[5].to_string(),
             ],
             active_field: 0,
             is_editing: false,
@@ -57,6 +60,7 @@ impl SetupState {
                 config.editor.clone(),
                 config.leetcode_session.clone().unwrap_or_default(),
                 config.csrf_token.clone().unwrap_or_default(),
+                config.solutions_repo_url.clone().unwrap_or_default(),
             ],
             active_field: 3,
             is_editing: true,
@@ -112,7 +116,7 @@ pub fn render_setup(frame: &mut Frame, state: &SetupState) {
     let area = frame.area();
 
     let form_width = 70u16.min(area.width.saturating_sub(4));
-    let form_height = 24u16.min(area.height.saturating_sub(2));
+    let form_height = 27u16.min(area.height.saturating_sub(2));
     let form_area = centered_rect(form_width, form_height, area);
 
     let block = Block::default()
@@ -133,6 +137,7 @@ pub fn render_setup(frame: &mut Frame, state: &SetupState) {
         Constraint::Length(3), // field 2
         Constraint::Length(3), // field 3
         Constraint::Length(3), // field 4
+        Constraint::Length(3), // field 5
         Constraint::Length(1), // auth status
         Constraint::Length(1), // spacer
         Constraint::Length(1), // status bar
@@ -165,12 +170,12 @@ pub fn render_setup(frame: &mut Frame, state: &SetupState) {
             ),
         ])
     };
-    frame.render_widget(Paragraph::new(auth_line), layout[7]);
+    frame.render_widget(Paragraph::new(auth_line), layout[8]);
 
     let esc_label = if state.is_editing { "Back" } else { "Quit" };
     render_status_bar(
         frame,
-        layout[9],
+        layout[10],
         &[
             ("Tab/\u{2193}", "Next"),
             ("Shift+Tab/\u{2191}", "Prev"),
