@@ -160,7 +160,7 @@ pub fn render_detail(frame: &mut Frame, area: Rect, state: &mut DetailState) {
             ("a", "Add to List"),
             ("r", "Run"),
             ("s", "Submit"),
-            ("c", "Commit"),
+            ("c", "Commit & Push"),
             ("b/Esc", "Back"),
             ("?", "Help"),
         ],

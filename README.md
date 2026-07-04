@@ -88,7 +88,7 @@ Press `?` on any screen for the full keybinding reference. Here are the essentia
 | `o`         | Scaffold & open in editor   |
 | `r`         | Run code (sample cases)     |
 | `s`         | Submit solution (all cases) |
-| `c`         | Git commit solution         |
+| `c`         | Git commit & push solution  |
 | `a`         | Add to list                 |
 | `b` / `Esc` | Back                        |
 

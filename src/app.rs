@@ -359,7 +359,7 @@ impl App {
                     ("a", "Add to list"),
                     ("r", "Run code"),
                     ("s", "Submit code"),
-                    ("c", "Commit solution"),
+                    ("c", "Commit & push solution"),
                     ("b/Esc", "Back to list"),
                 ],
                 Screen::Result(_) => vec![
@@ -1292,6 +1292,56 @@ impl App {
             return Ok(());
         }
 
+        let branch_name = dir_name.clone();
+
+        let current_branch = Command::new("git")
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .current_dir(&workspace)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default();
+
+        if current_branch != branch_name {
+            let branch_exists = Command::new("git")
+                .args(["show-ref", "--verify", "--quiet"])
+                .arg(format!("refs/heads/{branch_name}"))
+                .current_dir(&workspace)
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+
+            let checkout_status = if branch_exists {
+                Command::new("git")
+                    .args(["checkout"])
+                    .arg(&branch_name)
+                    .current_dir(&workspace)
+                    .status()
+            } else {
+                Command::new("git")
+                    .args(["checkout", "-b"])
+                    .arg(&branch_name)
+                    .arg("main")
+                    .current_dir(&workspace)
+                    .status()
+            };
+
+            match checkout_status {
+                Ok(s) if s.success() => {}
+                Ok(s) => {
+                    self.error_overlay = Some(format!(
+                        "Failed to switch to branch '{branch_name}' (status: {s})"
+                    ));
+                    return Ok(());
+                }
+                Err(e) => {
+                    self.error_overlay = Some(format!("Failed to run 'git checkout': {e}"));
+                    return Ok(());
+                }
+            }
+        }
+
         let add_status = Command::new("git")
             .args(["add", "--"])
             .arg(&project_dir)
@@ -1333,9 +1383,29 @@ impl App {
                 self.error_overlay = Some(format!(
                     "'git commit' exited with status: {s} (there may be nothing staged to commit)"
                 ));
+                return Ok(());
             }
             Err(e) => {
                 self.error_overlay = Some(format!("Failed to run 'git commit': {e}"));
+                return Ok(());
+            }
+        }
+
+        let push_output = Command::new("git")
+            .args(["push", "-u", "origin"])
+            .arg(&branch_name)
+            .current_dir(&workspace)
+            .output();
+
+        match push_output {
+            Ok(o) if o.status.success() => {}
+            Ok(o) => {
+                let stderr = String::from_utf8_lossy(&o.stderr);
+                self.error_overlay = Some(format!("Committed, but 'git push' failed: {stderr}"));
+            }
+            Err(e) => {
+                self.error_overlay =
+                    Some(format!("Committed, but failed to run 'git push': {e}"));
             }
         }
 
