@@ -85,6 +85,28 @@ pub struct SubmitResponse {
     pub error: Option<String>,
 }
 
+/// LeetCode's "Run" check response sends `code_output` as an array (one entry
+/// per sample case), but the "Submit" check response sends it as a single
+/// string. Accept either shape.
+fn deserialize_string_or_vec<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrVec {
+        Vec(Vec<String>),
+        String(String),
+    }
+
+    Ok(match Option::<StringOrVec>::deserialize(deserializer)? {
+        Some(StringOrVec::Vec(v)) => Some(v),
+        Some(StringOrVec::String(s)) if s.is_empty() => None,
+        Some(StringOrVec::String(s)) => Some(s.lines().map(String::from).collect()),
+        None => None,
+    })
+}
+
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default)]
 pub struct CheckResponse {
@@ -93,6 +115,7 @@ pub struct CheckResponse {
     pub status_code: Option<i32>,
     pub code_answer: Option<Vec<String>>,
     pub expected_code_answer: Option<Vec<String>>,
+    #[serde(deserialize_with = "deserialize_string_or_vec")]
     pub code_output: Option<Vec<String>>,
     pub expected_output: Option<String>,
     pub last_testcase: Option<String>,
