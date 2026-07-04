@@ -66,10 +66,10 @@ impl DetailState {
             KeyCode::Char('a') => DetailAction::AddToList(self.detail.question_id.clone()),
             KeyCode::Char('r') => DetailAction::RunCode,
             KeyCode::Char('s') => DetailAction::SubmitCode,
-            KeyCode::Char('q') => DetailAction::Quit,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 DetailAction::Quit
             }
+            KeyCode::Char('c') => DetailAction::Commit,
             _ => DetailAction::None,
         }
     }
@@ -88,6 +88,7 @@ pub enum DetailAction {
     AddToList(String),
     RunCode,
     SubmitCode,
+    Commit,
 }
 
 pub fn render_detail(frame: &mut Frame, area: Rect, state: &mut DetailState) {
@@ -159,8 +160,8 @@ pub fn render_detail(frame: &mut Frame, area: Rect, state: &mut DetailState) {
             ("a", "Add to List"),
             ("r", "Run"),
             ("s", "Submit"),
+            ("c", "Commit"),
             ("b/Esc", "Back"),
-            ("q", "Quit"),
             ("?", "Help"),
         ],
     );

@@ -359,8 +359,8 @@ impl App {
                     ("a", "Add to list"),
                     ("r", "Run code"),
                     ("s", "Submit code"),
+                    ("c", "Commit solution"),
                     ("b/Esc", "Back to list"),
-                    ("q", "Quit"),
                 ],
                 Screen::Result(_) => vec![
                     ("j/k/\u{2191}/\u{2193}", "Scroll"),
@@ -684,6 +684,14 @@ impl App {
                     }
                     DetailAction::AddToList(question_id) => {
                         self.open_add_to_list_popup(question_id);
+                    }
+                    DetailAction::Commit => {
+                        let detail = if let Screen::Detail(s) = &self.screen {
+                            s.detail.clone()
+                        } else {
+                            unreachable!()
+                        };
+                        self.do_git_commit(&detail, terminal, events)?;
                     }
                     DetailAction::None => {}
                 }
@@ -1254,6 +1262,80 @@ impl App {
             }
             Err(e) => {
                 self.error_overlay = Some(format!("Scaffold failed: {e}"));
+            }
+        }
+
+        Ok(())
+    }
+
+    fn do_git_commit(
+        &mut self,
+        detail: &QuestionDetail,
+        terminal: &mut ratatui::DefaultTerminal,
+        events: &EventHandler,
+    ) -> Result<()> {
+        let config = match &self.config {
+            Some(c) => c.clone(),
+            None => {
+                self.error_overlay = Some("No config loaded".to_string());
+                return Ok(());
+            }
+        };
+
+        let workspace = config.expanded_workspace();
+        let dir_name = format!("{}-{}", detail.frontend_question_id, detail.title_slug);
+        let project_dir = workspace.join(&dir_name);
+
+        if !project_dir.exists() {
+            self.error_overlay =
+                Some("No scaffolded solution for this problem yet — press 'o' first.".to_string());
+            return Ok(());
+        }
+
+        let add_status = Command::new("git")
+            .args(["add", "--"])
+            .arg(&project_dir)
+            .current_dir(&workspace)
+            .status();
+
+        match add_status {
+            Ok(s) if s.success() => {}
+            Ok(s) => {
+                self.error_overlay = Some(format!(
+                    "'git add' failed (status: {s}). Is {} a git repository?",
+                    workspace.display()
+                ));
+                return Ok(());
+            }
+            Err(e) => {
+                self.error_overlay = Some(format!("Failed to run 'git add': {e}"));
+                return Ok(());
+            }
+        }
+
+        let commit_title = format!("{}. {}", detail.frontend_question_id, detail.title);
+
+        // Pause event reader so the editor gets exclusive stdin access
+        events.pause();
+        ratatui::restore();
+
+        let status = Command::new("git")
+            .args(["commit", "--edit", "-m", &commit_title])
+            .current_dir(&workspace)
+            .status();
+
+        *terminal = ratatui::init();
+        events.resume();
+
+        match status {
+            Ok(s) if s.success() => {}
+            Ok(s) => {
+                self.error_overlay = Some(format!(
+                    "'git commit' exited with status: {s} (there may be nothing staged to commit)"
+                ));
+            }
+            Err(e) => {
+                self.error_overlay = Some(format!("Failed to run 'git commit': {e}"));
             }
         }
 

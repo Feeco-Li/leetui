@@ -24,7 +24,7 @@ pub fn scaffold_rust(workspace: &PathBuf, detail: &QuestionDetail) -> Result<Pat
         .with_context(|| format!("Failed to create dir {}", project_dir.display()))?;
 
     let output = Command::new("cargo")
-        .args(["init", "--name", &pkg_name])
+        .args(["init", "--name", &pkg_name, "--vcs", "none"])
         .current_dir(&project_dir)
         .output()
         .context("Failed to run cargo init")?;
