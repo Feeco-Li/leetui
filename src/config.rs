@@ -11,6 +11,10 @@ pub struct Config {
     pub leetcode_session: Option<String>,
     #[serde(default)]
     pub csrf_token: Option<String>,
+    #[serde(default)]
+    pub cf_clearance: Option<String>,
+    #[serde(default)]
+    pub user_agent: Option<String>,
 }
 
 impl Config {

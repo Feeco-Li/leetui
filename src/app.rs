@@ -78,6 +78,8 @@ impl App {
         let api_client = LeetCodeClient::new(
             config.as_ref().and_then(|c| c.leetcode_session.as_deref()),
             config.as_ref().and_then(|c| c.csrf_token.as_deref()),
+            config.as_ref().and_then(|c| c.cf_clearance.as_deref()),
+            config.as_ref().and_then(|c| c.user_agent.as_deref()),
         )?;
 
         let login_prompt = config.as_ref().is_some_and(|c| !c.is_authenticated());
@@ -570,6 +572,11 @@ impl App {
                             editor: state.fields[2].clone(),
                             leetcode_session: session,
                             csrf_token: csrf,
+                            cf_clearance: self
+                                .config
+                                .as_ref()
+                                .and_then(|c| c.cf_clearance.clone()),
+                            user_agent: self.config.as_ref().and_then(|c| c.user_agent.clone()),
                         };
                         if let Err(e) = config.save() {
                             self.error_overlay = Some(format!("Failed to save config: {e}"));
@@ -577,6 +584,8 @@ impl App {
                             if let Ok(client) = LeetCodeClient::new(
                                 config.leetcode_session.as_deref(),
                                 config.csrf_token.as_deref(),
+                                config.cf_clearance.as_deref(),
+                                config.user_agent.as_deref(),
                             ) {
                                 self.api_client = client;
                             }
@@ -1272,6 +1281,10 @@ impl App {
             .iter()
             .find(|c| c.name == "csrftoken")
             .map(|c| c.value.clone());
+        let cf_clearance = cookies
+            .iter()
+            .find(|c| c.name == "cf_clearance")
+            .map(|c| c.value.clone());
 
         if session.is_none() || csrf.is_none() {
             // No cookies found — open browser and wait for retry
@@ -1282,7 +1295,7 @@ impl App {
             return;
         }
 
-        self.apply_login_cookies(session, csrf);
+        self.apply_login_cookies(session, csrf, cf_clearance);
     }
 
     fn retry_browser_login(&mut self) {
@@ -1308,6 +1321,10 @@ impl App {
             .iter()
             .find(|c| c.name == "csrftoken")
             .map(|c| c.value.clone());
+        let cf_clearance = cookies
+            .iter()
+            .find(|c| c.name == "cf_clearance")
+            .map(|c| c.value.clone());
 
         if session.is_none() || csrf.is_none() {
             self.error_overlay = Some(
@@ -1317,22 +1334,35 @@ impl App {
             return;
         }
 
-        self.apply_login_cookies(session, csrf);
+        self.apply_login_cookies(session, csrf, cf_clearance);
     }
 
-    fn apply_login_cookies(&mut self, session: Option<String>, csrf: Option<String>) {
+    fn apply_login_cookies(
+        &mut self,
+        session: Option<String>,
+        csrf: Option<String>,
+        cf_clearance: Option<String>,
+    ) {
         // Update config
         if let Some(ref mut config) = self.config {
             config.leetcode_session = session.clone();
             config.csrf_token = csrf.clone();
+            config.cf_clearance = cf_clearance.clone();
             if let Err(e) = config.save() {
                 self.error_overlay = Some(format!("Cookies found but failed to save config: {e}"));
                 return;
             }
         }
 
+        let user_agent = self.config.as_ref().and_then(|c| c.user_agent.clone());
+
         // Recreate client with new credentials
-        match LeetCodeClient::new(session.as_deref(), csrf.as_deref()) {
+        match LeetCodeClient::new(
+            session.as_deref(),
+            csrf.as_deref(),
+            cf_clearance.as_deref(),
+            user_agent.as_deref(),
+        ) {
             Ok(client) => {
                 self.api_client = client;
                 self.start_fetch_problems();

@@ -13,6 +13,13 @@ const LEETCODE_CHECK: &str = "https://leetcode.com/submissions/detail/{id}/check
 const LEETCODE_LIST_API: &str = "https://leetcode.com/list/api/";
 const LEETCODE_LIST_QUESTIONS_API: &str = "https://leetcode.com/list/api/questions";
 
+#[cfg(target_os = "macos")]
+const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+#[cfg(target_os = "windows")]
+const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+
 #[derive(Clone)]
 pub struct LeetCodeClient {
     client: Client,
@@ -20,7 +27,12 @@ pub struct LeetCodeClient {
 }
 
 impl LeetCodeClient {
-    pub fn new(session: Option<&str>, csrf: Option<&str>) -> Result<Self> {
+    pub fn new(
+        session: Option<&str>,
+        csrf: Option<&str>,
+        cf_clearance: Option<&str>,
+        user_agent: Option<&str>,
+    ) -> Result<Self> {
         let jar = Arc::new(Jar::default());
         let url = "https://leetcode.com".parse().unwrap();
 
@@ -34,9 +46,15 @@ impl LeetCodeClient {
                 jar.add_cookie_str(&format!("csrftoken={csrf}"), &url);
             }
         }
+        if let Some(cf_clearance) = cf_clearance {
+            if !cf_clearance.is_empty() {
+                jar.add_cookie_str(&format!("cf_clearance={cf_clearance}"), &url);
+            }
+        }
 
         let client = Client::builder()
             .cookie_provider(jar)
+            .user_agent(user_agent.filter(|ua| !ua.is_empty()).unwrap_or(DEFAULT_USER_AGENT))
             .build()
             .context("Failed to create HTTP client")?;
 
