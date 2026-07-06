@@ -21,7 +21,7 @@ pub struct DetailState {
 
 impl DetailState {
     pub fn new(detail: QuestionDetail) -> Self {
-        let content_lines = if detail.is_paid_only && detail.content.is_none() {
+        let mut content_lines = if detail.is_paid_only && detail.content.is_none() {
             vec![Line::from(Span::styled(
                 " Premium content — not available without authentication.",
                 Style::default().fg(Color::Yellow),
@@ -34,6 +34,26 @@ impl DetailState {
                 Style::default().fg(Color::DarkGray),
             ))]
         };
+
+        if !detail.hints.is_empty() {
+            content_lines.push(Line::from(""));
+            content_lines.push(Line::from(Span::styled(
+                "Hints:",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            for (i, hint) in detail.hints.iter().enumerate() {
+                content_lines.push(Line::from(""));
+                content_lines.push(Line::from(Span::styled(
+                    format!("Hint {}", i + 1),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )));
+                content_lines.extend(html_to_lines(hint));
+            }
+        }
 
         Self {
             detail,
