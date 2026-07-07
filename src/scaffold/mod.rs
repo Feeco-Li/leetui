@@ -1,3 +1,4 @@
+pub mod python;
 pub mod rust;
 
 use anyhow::{Result, bail};
@@ -12,6 +13,7 @@ pub fn scaffold_problem(
 ) -> Result<PathBuf> {
     match language {
         "rust" => rust::scaffold_rust(workspace, detail),
+        "python3" | "python" => python::scaffold_python(workspace, detail),
         _ => bail!("Unsupported language for scaffolding: {}", language),
     }
 }

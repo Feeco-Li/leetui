@@ -106,7 +106,7 @@ Press `?` on any screen for the full keybinding reference. Here are the essentia
 Settings are stored in `~/.leetcode-cli/config.toml`. You can edit them from within the app by pressing `S`, or edit the file directly:
 
 - **workspace_dir** -- where scaffolded projects are created (default: `~/leetcode`)
-- **language** -- `rust` _(Note: other languages might appear here, but only Rust is supported/tested)_
+- **language** -- `rust` or `python3` _(Note: other languages might appear here, but only Rust and Python are supported/tested)_
 - **editor** -- command to open files (default: `nvim`)
 - **solutions_repo_url** -- (optional) git URL of an existing solutions repo. If `workspace_dir` doesn't exist yet (e.g. on a new device), the first time you scaffold a problem (`o`) it's cloned there instead of creating an empty directory.
 

@@ -1351,26 +1351,27 @@ impl App {
                 .map(|s| s.success())
                 .unwrap_or(false);
 
-            let checkout_status = if branch_exists {
+            let checkout_output = if branch_exists {
                 Command::new("git")
                     .args(["checkout"])
                     .arg(&branch_name)
                     .current_dir(&workspace)
-                    .status()
+                    .output()
             } else {
                 Command::new("git")
                     .args(["checkout", "-b"])
                     .arg(&branch_name)
                     .arg("main")
                     .current_dir(&workspace)
-                    .status()
+                    .output()
             };
 
-            match checkout_status {
-                Ok(s) if s.success() => {}
-                Ok(s) => {
+            match checkout_output {
+                Ok(o) if o.status.success() => {}
+                Ok(o) => {
+                    let stderr = String::from_utf8_lossy(&o.stderr);
                     self.error_overlay = Some(format!(
-                        "Failed to switch to branch '{branch_name}' (status: {s})"
+                        "Failed to switch to branch '{branch_name}': {stderr}"
                     ));
                     return Ok(());
                 }
