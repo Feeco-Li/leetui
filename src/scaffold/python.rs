@@ -48,6 +48,15 @@ pub fn scaffold_python(workspace: &PathBuf, detail: &QuestionDetail) -> Result<P
     src.push_str(snippet);
     src.push('\n');
 
+    // Test stub, mirroring the Rust scaffold's #[cfg(test)] block
+    src.push_str("\n\nimport unittest\n\n\n");
+    src.push_str("class TestSolution(unittest.TestCase):\n");
+    src.push_str("    def test_solution(self):\n");
+    src.push_str("        # TODO: add test cases\n");
+    src.push_str("        pass\n\n\n");
+    src.push_str("if __name__ == \"__main__\":\n");
+    src.push_str("    unittest.main()\n");
+
     std::fs::write(&solution_py, src)
         .with_context(|| format!("Failed to write {}", solution_py.display()))?;
 
@@ -93,6 +102,8 @@ mod tests {
         assert!(content.contains("# 1: Two Sum"));
         assert!(content.contains("class Solution:"));
         assert!(content.contains("def twoSum"));
+        assert!(content.contains("class TestSolution(unittest.TestCase):"));
+        assert!(content.contains("if __name__ == \"__main__\":"));
 
         std::fs::remove_dir_all(&tmp).unwrap();
     }
