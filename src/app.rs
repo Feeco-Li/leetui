@@ -117,6 +117,7 @@ impl App {
         if matches!(self.screen, Screen::Home(_)) {
             self.start_fetch_problems();
             self.start_fetch_user_stats();
+            self.pull_workspace_on_startup();
         }
 
         loop {
@@ -1307,6 +1308,33 @@ impl App {
         Ok(())
     }
 
+    fn pull_workspace_on_startup(&mut self) {
+        let Some(config) = &self.config else {
+            return;
+        };
+        let workspace = config.expanded_workspace();
+
+        if !workspace.join(".git").exists() {
+            return;
+        }
+
+        let pull_output = Command::new("git")
+            .args(["pull", "origin", "main"])
+            .current_dir(&workspace)
+            .output();
+
+        match pull_output {
+            Ok(o) if o.status.success() => {}
+            Ok(o) => {
+                let stderr = String::from_utf8_lossy(&o.stderr);
+                self.error_overlay = Some(format!("Failed to pull latest solutions: {stderr}"));
+            }
+            Err(e) => {
+                self.error_overlay = Some(format!("Failed to run 'git pull': {e}"));
+            }
+        }
+    }
+
     fn do_git_commit(
         &mut self,
         detail: &QuestionDetail,
@@ -1331,8 +1359,6 @@ impl App {
             return Ok(());
         }
 
-        let branch_name = dir_name.clone();
-
         let current_branch = Command::new("git")
             .args(["rev-parse", "--abbrev-ref", "HEAD"])
             .current_dir(&workspace)
@@ -1342,43 +1368,42 @@ impl App {
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
             .unwrap_or_default();
 
-        if current_branch != branch_name {
-            let branch_exists = Command::new("git")
-                .args(["show-ref", "--verify", "--quiet"])
-                .arg(format!("refs/heads/{branch_name}"))
+        if current_branch != "main" {
+            let checkout_output = Command::new("git")
+                .args(["checkout", "main"])
                 .current_dir(&workspace)
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
-
-            let checkout_output = if branch_exists {
-                Command::new("git")
-                    .args(["checkout"])
-                    .arg(&branch_name)
-                    .current_dir(&workspace)
-                    .output()
-            } else {
-                Command::new("git")
-                    .args(["checkout", "-b"])
-                    .arg(&branch_name)
-                    .arg("main")
-                    .current_dir(&workspace)
-                    .output()
-            };
+                .output();
 
             match checkout_output {
                 Ok(o) if o.status.success() => {}
                 Ok(o) => {
                     let stderr = String::from_utf8_lossy(&o.stderr);
-                    self.error_overlay = Some(format!(
-                        "Failed to switch to branch '{branch_name}': {stderr}"
-                    ));
+                    self.error_overlay =
+                        Some(format!("Failed to switch to branch 'main': {stderr}"));
                     return Ok(());
                 }
                 Err(e) => {
                     self.error_overlay = Some(format!("Failed to run 'git checkout': {e}"));
                     return Ok(());
                 }
+            }
+        }
+
+        let pull_output = Command::new("git")
+            .args(["pull", "origin", "main"])
+            .current_dir(&workspace)
+            .output();
+
+        match pull_output {
+            Ok(o) if o.status.success() => {}
+            Ok(o) => {
+                let stderr = String::from_utf8_lossy(&o.stderr);
+                self.error_overlay = Some(format!("'git pull' failed: {stderr}"));
+                return Ok(());
+            }
+            Err(e) => {
+                self.error_overlay = Some(format!("Failed to run 'git pull': {e}"));
+                return Ok(());
             }
         }
 
@@ -1432,8 +1457,7 @@ impl App {
         }
 
         let push_output = Command::new("git")
-            .args(["push", "-u", "origin"])
-            .arg(&branch_name)
+            .args(["push", "origin", "main"])
             .current_dir(&workspace)
             .output();
 
