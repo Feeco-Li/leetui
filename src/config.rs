@@ -7,16 +7,31 @@ pub struct Config {
     pub workspace_dir: String,
     pub language: String,
     pub editor: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub leetcode_session: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub csrf_token: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub cf_clearance: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub user_agent: Option<String>,
     #[serde(default)]
     pub solutions_repo_url: Option<String>,
+}
+
+// Auth tokens live in their own file (credentials.toml), separate from the
+// generic settings in config.toml, so they can be kept with tighter file
+// permissions and aren't casually shared/backed up alongside workspace_dir etc.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct Credentials {
+    #[serde(default)]
+    leetcode_session: Option<String>,
+    #[serde(default)]
+    csrf_token: Option<String>,
+    #[serde(default)]
+    cf_clearance: Option<String>,
+    #[serde(default)]
+    user_agent: Option<String>,
 }
 
 impl Config {
@@ -35,6 +50,10 @@ impl Config {
         Self::config_dir().join("config.toml")
     }
 
+    pub fn credentials_path() -> PathBuf {
+        Self::config_dir().join("credentials.toml")
+    }
+
     pub fn cache_path() -> PathBuf {
         Self::config_dir().join("problems.json")
     }
@@ -46,8 +65,32 @@ impl Config {
         }
         let contents = std::fs::read_to_string(&path)
             .with_context(|| format!("Failed to read config from {}", path.display()))?;
-        let config: Config =
+        let mut config: Config =
             toml::from_str(&contents).with_context(|| "Failed to parse config.toml")?;
+
+        // Migrate credentials that were previously stored inline in config.toml
+        // (they'll deserialize onto `config` above since skip_serializing only
+        // affects writing) into the dedicated credentials file.
+        let had_inline_credentials = config.leetcode_session.is_some()
+            || config.csrf_token.is_some()
+            || config.cf_clearance.is_some()
+            || config.user_agent.is_some();
+
+        let creds_path = Self::credentials_path();
+        if creds_path.exists() {
+            let creds_contents = std::fs::read_to_string(&creds_path).with_context(|| {
+                format!("Failed to read credentials from {}", creds_path.display())
+            })?;
+            let creds: Credentials = toml::from_str(&creds_contents)
+                .with_context(|| "Failed to parse credentials.toml")?;
+            config.leetcode_session = creds.leetcode_session;
+            config.csrf_token = creds.csrf_token;
+            config.cf_clearance = creds.cf_clearance;
+            config.user_agent = creds.user_agent;
+        } else if had_inline_credentials {
+            config.save()?;
+        }
+
         Ok(Some(config))
     }
 
@@ -55,11 +98,35 @@ impl Config {
         let dir = Self::config_dir();
         std::fs::create_dir_all(&dir)
             .with_context(|| format!("Failed to create config dir {}", dir.display()))?;
+
         let path = Self::config_path();
         let contents =
             toml::to_string_pretty(self).with_context(|| "Failed to serialize config")?;
         std::fs::write(&path, contents)
             .with_context(|| format!("Failed to write config to {}", path.display()))?;
+
+        let creds = Credentials {
+            leetcode_session: self.leetcode_session.clone(),
+            csrf_token: self.csrf_token.clone(),
+            cf_clearance: self.cf_clearance.clone(),
+            user_agent: self.user_agent.clone(),
+        };
+        let creds_path = Self::credentials_path();
+        let creds_contents =
+            toml::to_string_pretty(&creds).with_context(|| "Failed to serialize credentials")?;
+        std::fs::write(&creds_path, creds_contents).with_context(|| {
+            format!("Failed to write credentials to {}", creds_path.display())
+        })?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&creds_path, std::fs::Permissions::from_mode(0o600))
+                .with_context(|| {
+                    format!("Failed to set permissions on {}", creds_path.display())
+                })?;
+        }
+
         Ok(())
     }
 
