@@ -368,24 +368,14 @@ impl App {
                     ("j/k/\u{2191}/\u{2193}", "Scroll"),
                     ("b/q/Esc", "Back to problem"),
                 ],
-                Screen::Lists(state) => {
-                    if state.viewing_list.is_some() {
-                        vec![
-                            ("j/k/\u{2191}/\u{2193}", "Navigate problems"),
-                            ("Enter", "View problem detail"),
-                            ("d", "Remove from list"),
-                            ("Esc", "Back to lists"),
-                        ]
-                    } else {
-                        vec![
-                            ("j/k/\u{2191}/\u{2193}", "Navigate lists"),
-                            ("Enter", "Open list"),
-                            ("n", "Create new list"),
-                            ("d", "Delete list"),
-                            ("Esc/q", "Back to home"),
-                        ]
-                    }
-                }
+                Screen::Lists(_) => vec![
+                    ("j/k/\u{2191}/\u{2193}", "Navigate"),
+                    ("l", "Expand/collapse list"),
+                    ("Enter", "Open problem / toggle list"),
+                    ("n", "Create new list"),
+                    ("d", "Delete list / remove problem"),
+                    ("Esc/q", "Back to home"),
+                ],
                 Screen::Setup(_) => vec![
                     ("Tab/\u{2193}", "Next field"),
                     ("Shift+Tab/\u{2191}", "Previous field"),
@@ -858,20 +848,22 @@ impl App {
                     state.lists = lists;
                     state.loading = false;
                     state.error_message = None;
-                    if !state.lists.is_empty() && state.list_table_state.selected().is_none() {
-                        state.list_table_state.select(Some(0));
-                    }
+                    state.clamp_cursor();
                     // The batch query never returns nested `questions` for
                     // custom lists, so their real "Problems" count has to be
                     // backfilled with a per-list fetch.
                     needs_question_fetch = state
                         .lists
                         .iter()
-                        .filter(|l| l.questions.is_empty())
-                        .map(|l| l.id_hash.clone())
+                        .enumerate()
+                        .filter(|(i, l)| l.questions.is_empty() && !state.loading_questions.contains(i))
+                        .map(|(i, l)| (i, l.id_hash.clone()))
                         .collect();
+                    for (i, _) in &needs_question_fetch {
+                        state.loading_questions.insert(*i);
+                    }
                 }
-                for id_hash in needs_question_fetch {
+                for (_, id_hash) in needs_question_fetch {
                     self.start_fetch_list_questions(&id_hash);
                 }
             }
@@ -902,28 +894,19 @@ impl App {
             }
             ApiResult::ListQuestions(id_hash, Ok(questions)) => {
                 if let Screen::Lists(ref mut state) = self.screen {
-                    let idx = state.lists.iter().position(|l| l.id_hash == id_hash);
-                    if let Some(idx) = idx {
-                        let is_empty = questions.is_empty();
+                    if let Some(idx) = state.lists.iter().position(|l| l.id_hash == id_hash) {
                         state.lists[idx].questions = questions;
-                        // Only touch the "viewing a list" spinner/selection
-                        // if this fetch is for the list currently open --
-                        // this result may just be a background backfill of
-                        // another list's Problems count.
-                        if state.viewing_list == Some(idx) {
-                            state.problems_loading = false;
-                            if !is_empty {
-                                state.problem_table_state.select(Some(0));
-                            }
-                        }
+                        state.loading_questions.remove(&idx);
+                        state.question_errors.remove(&idx);
                     }
                 }
             }
-            ApiResult::ListQuestions(_, Err(e)) => {
+            ApiResult::ListQuestions(id_hash, Err(e)) => {
                 if let Screen::Lists(ref mut state) = self.screen {
-                    if state.problems_loading {
-                        state.problems_loading = false;
-                        state.problems_error = Some(format!("{e}"));
+                    if let Some(idx) = state.lists.iter().position(|l| l.id_hash == id_hash) {
+                        if state.loading_questions.remove(&idx) {
+                            state.question_errors.insert(idx, format!("{e}"));
+                        }
                     }
                 }
             }

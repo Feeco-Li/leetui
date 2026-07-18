@@ -105,12 +105,16 @@ Each testcase is shown as its own block: a pass/fail marker, the input, any `pri
 
 ### Lists
 
-| Key     | Action                       |
-| ------- | ---------------------------- |
-| `Enter` | Open list / View problem     |
-| `n`     | Create new list              |
-| `d`     | Delete list / Remove problem |
-| `Esc`   | Back                         |
+| Key       | Action                              |
+| --------- | ------------------------------------ |
+| `j` / `k` | Navigate                            |
+| `l`       | Expand/collapse list                |
+| `Enter`   | Open problem (or expand/collapse a list) |
+| `n`       | Create new list                     |
+| `d`       | Delete list / remove problem        |
+| `q` / `Esc` | Back                               |
+
+Lists expand in place -- press `l` on a list to show its problems indented underneath it, without leaving the lists screen. Navigate through both lists and their problems with `j`/`k`, and press `Enter` on a problem to open it directly.
 
 ## Configuration
 
