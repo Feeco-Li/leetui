@@ -29,10 +29,22 @@ pub struct ResultData {
     pub expected_output: Option<String>,
     pub last_testcase: Option<String>,
     pub compile_error: Option<String>,
+    pub stdout: Option<Vec<String>>,
 }
 
 impl ResultData {
     pub fn from_check(resp: &CheckResponse) -> Self {
+        let stdout = resp
+            .std_output_list
+            .as_ref()
+            .map(|v| {
+                v.iter()
+                    .map(|s| s.trim_end_matches('\n').to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+            })
+            .filter(|v| !v.is_empty());
+
         Self {
             status_msg: resp.status_msg.clone().unwrap_or_default(),
             status_code: resp.status_code.unwrap_or(-1),
@@ -46,6 +58,7 @@ impl ResultData {
             }),
             last_testcase: resp.last_testcase.clone(),
             compile_error: resp.full_compile_error.clone().or(resp.compile_error.clone()),
+            stdout,
         }
     }
 }
@@ -254,6 +267,23 @@ fn build_result_lines(data: &ResultData, kind: ResultKind) -> Vec<Line<'static>>
         ]));
     }
 
+    // stdout from print()/debug output, if any
+    if let Some(ref stdout) = data.stdout {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "  Stdout:",
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+        )));
+        for entry in stdout {
+            for line in entry.lines() {
+                lines.push(Line::from(Span::styled(
+                    format!("    {line}"),
+                    Style::default().fg(Color::Gray),
+                )));
+            }
+        }
+    }
+
     // Compile error
     if let Some(ref err) = data.compile_error {
         lines.push(Line::from(""));
@@ -347,4 +377,46 @@ fn build_result_lines(data: &ResultData, kind: ResultKind) -> Vec<Line<'static>>
     }
 
     lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_check_surfaces_print_output_as_stdout() {
+        let body = r#"{
+            "status_code": 10,
+            "status_runtime": "0 ms",
+            "code_answer": ["[0,1]", ""],
+            "std_output_list": ["DEBUG_PRINT_MARKER [2, 7, 11, 15] 9\n", ""],
+            "total_correct": 1,
+            "total_testcases": 1,
+            "state": "SUCCESS"
+        }"#;
+        let resp: CheckResponse = serde_json::from_str(body).unwrap();
+        let data = ResultData::from_check(&resp);
+
+        assert_eq!(
+            data.stdout,
+            Some(vec!["DEBUG_PRINT_MARKER [2, 7, 11, 15] 9".to_string()])
+        );
+        // The return value shown as "Output:" must stay the code_answer,
+        // not be shadowed by stdout.
+        assert_eq!(data.code_output, Some(vec!["[0,1]".to_string(), String::new()]));
+    }
+
+    #[test]
+    fn from_check_omits_stdout_when_absent() {
+        let body = r#"{
+            "status_code": 10,
+            "code_answer": ["[0,1]", ""],
+            "std_output_list": ["", ""],
+            "state": "SUCCESS"
+        }"#;
+        let resp: CheckResponse = serde_json::from_str(body).unwrap();
+        let data = ResultData::from_check(&resp);
+
+        assert_eq!(data.stdout, None);
+    }
 }

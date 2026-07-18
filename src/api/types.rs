@@ -117,6 +117,11 @@ pub struct CheckResponse {
     pub expected_code_answer: Option<Vec<String>>,
     #[serde(deserialize_with = "deserialize_string_or_vec")]
     pub code_output: Option<Vec<String>>,
+    /// stdout captured from `print()`/debug output during execution, one
+    /// entry per test case (distinct from `code_output`, which holds the
+    /// return-value comparison, not printed output).
+    #[serde(deserialize_with = "deserialize_string_or_vec")]
+    pub std_output_list: Option<Vec<String>>,
     pub expected_output: Option<String>,
     pub last_testcase: Option<String>,
     pub total_correct: Option<i32>,
@@ -213,4 +218,37 @@ pub struct UserStats {
     pub medium_total: i32,
     pub hard_solved: i32,
     pub hard_total: i32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Captured from a real `interpret_solution` + `check` round trip against
+    // leetcode.com for Two Sum with a `print()` call in the solution.
+    #[test]
+    fn parses_std_output_list_from_run_response() {
+        let body = r#"{
+            "status_code": 10,
+            "lang": "python3",
+            "run_success": true,
+            "status_runtime": "0 ms",
+            "code_answer": ["[0,1]", ""],
+            "code_output": ["DEBUG_PRINT_MARKER [2, 7, 11, 15] 9"],
+            "std_output_list": ["DEBUG_PRINT_MARKER [2, 7, 11, 15] 9\n", ""],
+            "status_memory": "19.2 MB",
+            "total_correct": 1,
+            "total_testcases": 1,
+            "state": "SUCCESS"
+        }"#;
+
+        let resp: CheckResponse = serde_json::from_str(body).unwrap();
+        assert_eq!(
+            resp.std_output_list,
+            Some(vec![
+                "DEBUG_PRINT_MARKER [2, 7, 11, 15] 9\n".to_string(),
+                String::new()
+            ])
+        );
+    }
 }
