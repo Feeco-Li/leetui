@@ -849,9 +849,10 @@ impl App {
                     state.loading = false;
                     state.error_message = None;
                     state.clamp_cursor();
-                    // The batch query never returns nested `questions` for
-                    // custom lists, so their real "Problems" count has to be
-                    // backfilled with a per-list fetch.
+                    // The batch query never includes each list's problems
+                    // (see FAVORITES_LIST_QUERY) -- every list's real
+                    // "Problems" count has to be backfilled with a
+                    // per-list fetch.
                     needs_question_fetch = state
                         .lists
                         .iter()

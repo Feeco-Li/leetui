@@ -198,8 +198,8 @@ pub struct FavoritesLists {
     pub all_favorites: Vec<FavoriteList>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub struct FavoriteList {
     pub id_hash: String,
     pub name: String,
@@ -208,6 +208,9 @@ pub struct FavoriteList {
     pub creator: String,
     pub is_watched: bool,
     pub is_public_favorite: bool,
+    /// Never populated by the batch favorites query (see
+    /// `FAVORITES_LIST_QUERY`) -- always filled in afterward via a
+    /// per-list `FAVORITE_QUESTION_LIST_QUERY` fetch.
     pub questions: Vec<FavoriteQuestion>,
 }
 

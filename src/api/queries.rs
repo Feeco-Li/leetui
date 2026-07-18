@@ -60,6 +60,15 @@ query {
 }
 "#;
 
+/// Deliberately does *not* request the nested `questions` field that
+/// LeetCode's schema technically allows here: for the built-in "Favorite"
+/// list it returns stale/phantom data (observed: 52 questions from what
+/// looks like a legacy star-bookmark system, when the actual list is
+/// empty on leetcode.com itself), and it's simply always empty for custom
+/// lists. `FAVORITE_QUESTION_LIST_QUERY` below -- the same per-list query
+/// the website's own problem-list page uses -- is the only reliable
+/// source for a list's contents, so every list's problems are always
+/// fetched that way instead.
 pub const FAVORITES_LIST_QUERY: &str = r#"
 query favoritesList {
   favoritesLists {
@@ -71,23 +80,11 @@ query favoritesList {
       creator
       isWatched
       isPublicFavorite
-      questions {
-        questionId
-        status
-        title
-        titleSlug
-      }
     }
   }
 }
 "#;
 
-/// LeetCode's `favoritesLists` query above only returns non-empty nested
-/// `questions` for the built-in "Favorite" list -- custom user-created lists
-/// come back with an empty array regardless of their real contents. The
-/// website itself fetches a custom list's problems separately via this
-/// per-list query (keyed by the list's `idHash` as `favoriteSlug`), so we
-/// have to do the same as a fallback when `questions` comes back empty.
 pub const FAVORITE_QUESTION_LIST_QUERY: &str = r#"
 query favoriteQuestionList($favoriteSlug: String!, $skip: Int, $limit: Int) {
   favoriteQuestionList(favoriteSlug: $favoriteSlug, skip: $skip, limit: $limit) {
