@@ -101,7 +101,7 @@ Press `?` on any screen for the full keybinding reference. Here are the essentia
 | `j` / `k`         | Scroll                       |
 | `b` / `q` / `Esc` | Back to problem detail       |
 
-Any `print()`/debug output from your code shows up in a **Stdout** section on this screen.
+Each testcase is shown as its own block: a pass/fail marker, the input, any `print()`/debug output, your output, and (if it didn't match) the expected output. Run shows every sample case; Submit only reports the first case that failed, since that's all LeetCode returns. Runtime errors show the full traceback, and accepted submissions show a runtime/memory percentile when LeetCode provides one.
 
 ### Lists
 
