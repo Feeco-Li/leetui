@@ -29,7 +29,18 @@ pub struct ResultData {
     pub expected_output: Option<String>,
     pub last_testcase: Option<String>,
     pub compile_error: Option<String>,
+    pub runtime_error: Option<String>,
+    pub runtime_percentile: Option<f64>,
+    pub memory_percentile: Option<f64>,
     pub stdout: Option<Vec<String>>,
+    /// One entry per sample testcase (plus a trailing empty padding entry
+    /// LeetCode always appends) -- unlike `code_output`/`stdout` above,
+    /// which are flattened across all cases. Only meaningful for Run.
+    pub per_case_output: Option<Vec<String>>,
+    pub per_case_expected: Option<Vec<String>>,
+    pub per_case_stdout: Option<Vec<String>>,
+    /// One char per testcase ('1' pass / '0' fail).
+    pub compare_result: Option<String>,
 }
 
 impl ResultData {
@@ -45,9 +56,26 @@ impl ResultData {
             })
             .filter(|v| !v.is_empty());
 
+        // LeetCode's Run/interpret endpoint reports status_code 10
+        // ("Accepted") as long as the code executes without a runtime
+        // error, even when the output doesn't match -- `correct_answer`
+        // is the field that actually reflects pass/fail there. Submit
+        // responses already set status_code correctly, so this is a
+        // no-op for them.
+        let (status_code, status_msg) = if resp.correct_answer == Some(false)
+            && resp.status_code == Some(10)
+        {
+            (11, "Wrong Answer".to_string())
+        } else {
+            (
+                resp.status_code.unwrap_or(-1),
+                resp.status_msg.clone().unwrap_or_default(),
+            )
+        };
+
         Self {
-            status_msg: resp.status_msg.clone().unwrap_or_default(),
-            status_code: resp.status_code.unwrap_or(-1),
+            status_msg,
+            status_code,
             total_correct: resp.total_correct,
             total_testcases: resp.total_testcases,
             runtime: resp.status_runtime.clone(),
@@ -58,9 +86,29 @@ impl ResultData {
             }),
             last_testcase: resp.last_testcase.clone(),
             compile_error: resp.full_compile_error.clone().or(resp.compile_error.clone()),
+            runtime_error: resp.full_runtime_error.clone().or(resp.runtime_error.clone()),
+            runtime_percentile: resp.runtime_percentile,
+            memory_percentile: resp.memory_percentile,
             stdout,
+            per_case_output: resp.code_answer.clone().or(resp.code_output.clone()),
+            per_case_expected: resp.expected_code_answer.clone(),
+            per_case_stdout: resp.std_output_list.clone(),
+            compare_result: resp.compare_result.clone(),
         }
     }
+}
+
+/// The raw sample testcase inputs, in the same order they were sent to
+/// Run/Submit -- this is what `code_answer`/`expected_code_answer`/
+/// `std_output_list` line up against index-for-index.
+fn sample_testcases(detail: &crate::api::types::QuestionDetail) -> Vec<String> {
+    detail
+        .example_testcase_list
+        .as_ref()
+        .filter(|v| !v.is_empty())
+        .cloned()
+        .or_else(|| detail.sample_test_case.clone().map(|s| vec![s]))
+        .unwrap_or_default()
 }
 
 #[derive(Debug, Clone)]
@@ -96,7 +144,8 @@ impl ResultState {
     }
 
     pub fn set_result(&mut self, data: ResultData) {
-        self.content_lines = build_result_lines(&data, self.kind);
+        let testcases = sample_testcases(&self.detail);
+        self.content_lines = build_result_lines(&data, self.kind, &testcases);
         self.status = ResultStatus::Success(data);
     }
 
@@ -221,7 +270,7 @@ pub fn render_result(frame: &mut Frame, area: Rect, state: &mut ResultState) {
     );
 }
 
-fn build_result_lines(data: &ResultData, kind: ResultKind) -> Vec<Line<'static>> {
+fn build_result_lines(data: &ResultData, kind: ResultKind, testcases: &[String]) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
     lines.push(Line::from(""));
 
@@ -252,35 +301,22 @@ fn build_result_lines(data: &ResultData, kind: ResultKind) -> Vec<Line<'static>>
         ]));
     }
 
-    // Runtime & memory (for accepted/submit)
+    // Runtime & memory, with percentile when LeetCode provides one
+    // (Submit-only, and only once enough accepted submissions exist to
+    // compare against).
     if let Some(ref rt) = data.runtime {
+        let suffix = percentile_suffix(data.runtime_percentile);
         lines.push(Line::from(vec![
             Span::styled("  Runtime: ", Style::default().fg(Color::White)),
-            Span::styled(rt.clone(), Style::default().fg(Color::Cyan)),
+            Span::styled(format!("{rt}{suffix}"), Style::default().fg(Color::Cyan)),
         ]));
     }
     if let Some(ref mem) = data.memory {
+        let suffix = percentile_suffix(data.memory_percentile);
         lines.push(Line::from(vec![
             Span::styled("  Memory: ", Style::default().fg(Color::White)),
-            Span::styled(mem.clone(), Style::default().fg(Color::Cyan)),
+            Span::styled(format!("{mem}{suffix}"), Style::default().fg(Color::Cyan)),
         ]));
-    }
-
-    // stdout from print()/debug output, if any
-    if let Some(ref stdout) = data.stdout {
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            "  Stdout:",
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
-        )));
-        for entry in stdout {
-            for line in entry.lines() {
-                lines.push(Line::from(Span::styled(
-                    format!("    {line}"),
-                    Style::default().fg(Color::Gray),
-                )));
-            }
-        }
     }
 
     // Compile error
@@ -298,79 +334,206 @@ fn build_result_lines(data: &ResultData, kind: ResultKind) -> Vec<Line<'static>>
         }
     }
 
-    // Wrong answer diff
-    if data.status_code != 10 && data.status_code != 20 || (data.status_code == 11 || (data.status_code != 10 && data.last_testcase.is_some())) {
-        if let Some(ref input) = data.last_testcase {
-            lines.push(Line::from(""));
+    // Runtime error (e.g. an uncaught exception) -- previously silently
+    // dropped since `CheckResponse` didn't even deserialize this field.
+    if let Some(ref err) = data.runtime_error {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "  Runtime Error:",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        )));
+        for line in err.lines() {
             lines.push(Line::from(Span::styled(
-                "  Last Testcase:",
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                format!("    {line}"),
+                Style::default().fg(Color::Red),
             )));
-            for line in input.lines() {
-                lines.push(Line::from(Span::styled(
-                    format!("    {line}"),
-                    Style::default().fg(Color::Gray),
-                )));
+        }
+    }
+
+    if matches!(kind, ResultKind::Run) {
+        lines.extend(build_testcase_breakdown(data, testcases));
+    } else {
+        // Submit only ever reports the first failing case (not every
+        // sample case like Run), but rendered with the same visual
+        // language: pass/fail marker, input, stdout, output, expected.
+        lines.extend(build_submit_case_block(data));
+    }
+
+    lines
+}
+
+fn percentile_suffix(percentile: Option<f64>) -> String {
+    match percentile {
+        Some(p) if p > 0.0 => format!(" (beats {p:.1}%)"),
+        _ => String::new(),
+    }
+}
+
+/// Submit's equivalent of `build_testcase_breakdown`, but for the single
+/// failing case it reports (or nothing, if the submission was accepted).
+fn build_submit_case_block(data: &ResultData) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    let has_content =
+        data.last_testcase.is_some() || data.expected_output.is_some() || data.code_output.is_some();
+    if !has_content {
+        return lines;
+    }
+
+    let passed = data.status_code == 10;
+    let (icon, color) = if passed {
+        ("\u{2714}", Color::Green)
+    } else {
+        ("\u{2718}", Color::Red)
+    };
+
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        format!("  Testcase {icon}"),
+        Style::default().fg(color).add_modifier(Modifier::BOLD),
+    )));
+
+    if let Some(ref input) = data.last_testcase {
+        lines.push(Line::from(Span::styled(
+            "    Input:",
+            Style::default().fg(Color::White),
+        )));
+        for line in input.lines() {
+            lines.push(Line::from(Span::styled(
+                format!("      {line}"),
+                Style::default().fg(Color::Gray),
+            )));
+        }
+    }
+
+    if let Some(ref stdout) = data.stdout {
+        if !stdout.is_empty() {
+            lines.push(Line::from(Span::styled(
+                "    Stdout:",
+                Style::default().fg(Color::White),
+            )));
+            for entry in stdout {
+                for line in entry.lines() {
+                    lines.push(Line::from(Span::styled(
+                        format!("      {line}"),
+                        Style::default().fg(Color::Gray),
+                    )));
+                }
             }
         }
+    }
 
-        if let Some(ref expected) = data.expected_output {
-            lines.push(Line::from(""));
+    if let Some(ref output) = data.code_output {
+        let output_color = if passed { Color::White } else { Color::Red };
+        lines.push(Line::from(Span::styled(
+            "    Output:",
+            Style::default().fg(output_color),
+        )));
+        for line in output {
             lines.push(Line::from(Span::styled(
-                "  Expected:",
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                format!("      {line}"),
+                Style::default().fg(output_color),
+            )));
+        }
+    }
+
+    if !passed {
+        if let Some(ref expected) = data.expected_output {
+            lines.push(Line::from(Span::styled(
+                "    Expected:",
+                Style::default().fg(Color::Green),
             )));
             for line in expected.lines() {
                 lines.push(Line::from(Span::styled(
-                    format!("    {line}"),
+                    format!("      {line}"),
                     Style::default().fg(Color::Green),
-                )));
-            }
-        }
-
-        if let Some(ref output) = data.code_output {
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                "  Output:",
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            )));
-            for line in output {
-                lines.push(Line::from(Span::styled(
-                    format!("    {line}"),
-                    Style::default().fg(Color::Red),
                 )));
             }
         }
     }
 
-    // For run mode show output even on success
-    if matches!(kind, ResultKind::Run) && data.status_code == 10 {
-        if let Some(ref output) = data.code_output {
-            if !output.is_empty() {
-                lines.push(Line::from(""));
+    lines
+}
+
+/// One block per sample testcase: pass/fail marker, input, this run's
+/// stdout, actual output, and (if it didn't pass) the expected output.
+fn build_testcase_breakdown(data: &ResultData, testcases: &[String]) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    for (i, testcase) in testcases.iter().enumerate() {
+        let passed = data
+            .compare_result
+            .as_ref()
+            .and_then(|c| c.as_bytes().get(i))
+            .map(|b| *b == b'1');
+        let (icon, color) = match passed {
+            Some(true) => ("\u{2714}", Color::Green),
+            Some(false) => ("\u{2718}", Color::Red),
+            None => ("\u{25cb}", Color::DarkGray),
+        };
+
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            format!("  Testcase {} {icon}", i + 1),
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
+        )));
+
+        lines.push(Line::from(Span::styled(
+            "    Input:",
+            Style::default().fg(Color::White),
+        )));
+        for line in testcase.lines() {
+            lines.push(Line::from(Span::styled(
+                format!("      {line}"),
+                Style::default().fg(Color::Gray),
+            )));
+        }
+
+        if let Some(stdout) = data
+            .per_case_stdout
+            .as_ref()
+            .and_then(|v| v.get(i))
+            .map(|s| s.trim_end_matches('\n'))
+            .filter(|s| !s.is_empty())
+        {
+            lines.push(Line::from(Span::styled(
+                "    Stdout:",
+                Style::default().fg(Color::White),
+            )));
+            for line in stdout.lines() {
                 lines.push(Line::from(Span::styled(
-                    "  Output:",
-                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                    format!("      {line}"),
+                    Style::default().fg(Color::Gray),
                 )));
-                for line in output {
-                    lines.push(Line::from(Span::styled(
-                        format!("    {line}"),
-                        Style::default().fg(Color::White),
-                    )));
-                }
             }
         }
-        if let Some(ref expected) = data.expected_output {
-            lines.push(Line::from(""));
+
+        if let Some(output) = data.per_case_output.as_ref().and_then(|v| v.get(i)) {
+            let output_color = if passed == Some(false) { Color::Red } else { Color::White };
             lines.push(Line::from(Span::styled(
-                "  Expected:",
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                "    Output:",
+                Style::default().fg(output_color),
             )));
-            for line in expected.lines() {
+            for line in output.lines() {
                 lines.push(Line::from(Span::styled(
-                    format!("    {line}"),
+                    format!("      {line}"),
+                    Style::default().fg(output_color),
+                )));
+            }
+        }
+
+        if passed != Some(true) {
+            if let Some(expected) = data.per_case_expected.as_ref().and_then(|v| v.get(i)) {
+                lines.push(Line::from(Span::styled(
+                    "    Expected:",
                     Style::default().fg(Color::Green),
                 )));
+                for line in expected.lines() {
+                    lines.push(Line::from(Span::styled(
+                        format!("      {line}"),
+                        Style::default().fg(Color::Green),
+                    )));
+                }
             }
         }
     }
@@ -417,5 +580,159 @@ mod tests {
         let data = ResultData::from_check(&resp);
 
         assert_eq!(data.stdout, None);
+    }
+
+    #[test]
+    fn from_check_overrides_misleading_accepted_status_on_run() {
+        // Captured from a real `interpret_solution` + `check` round trip:
+        // LeetCode reports status_code 10 / "Accepted" even though
+        // correct_answer is false and no testcases actually passed.
+        let body = r#"{
+            "status_code": 10,
+            "status_msg": "Accepted",
+            "code_answer": ["[1,1,2]", "[1,1,2,3]", ""],
+            "expected_code_answer": ["[1,2]", "[1,2,3]", ""],
+            "correct_answer": false,
+            "total_correct": 0,
+            "total_testcases": 2,
+            "state": "SUCCESS"
+        }"#;
+        let resp: CheckResponse = serde_json::from_str(body).unwrap();
+        let data = ResultData::from_check(&resp);
+
+        assert_eq!(data.status_code, 11);
+        assert_eq!(data.status_msg, "Wrong Answer");
+    }
+
+    #[test]
+    fn from_check_keeps_accepted_status_when_correct() {
+        let body = r#"{
+            "status_code": 10,
+            "status_msg": "Accepted",
+            "correct_answer": true,
+            "total_correct": 2,
+            "total_testcases": 2,
+            "state": "SUCCESS"
+        }"#;
+        let resp: CheckResponse = serde_json::from_str(body).unwrap();
+        let data = ResultData::from_check(&resp);
+
+        assert_eq!(data.status_code, 10);
+        assert_eq!(data.status_msg, "Accepted");
+    }
+
+    #[test]
+    fn testcase_breakdown_pairs_each_case_with_its_own_io() {
+        // Same real round trip as above: 2 sample cases, both failed.
+        let body = r#"{
+            "status_code": 10,
+            "code_answer": ["[1,1,2]", "[1,1,2,3]", ""],
+            "expected_code_answer": ["[1,2]", "[1,2,3]", ""],
+            "std_output_list": ["1\n", "1\n2\n", ""],
+            "compare_result": "00",
+            "correct_answer": false,
+            "total_correct": 0,
+            "total_testcases": 2,
+            "state": "SUCCESS"
+        }"#;
+        let resp: CheckResponse = serde_json::from_str(body).unwrap();
+        let data = ResultData::from_check(&resp);
+        let testcases = vec!["[1,1,2]".to_string(), "[1,1,2,3,3]".to_string()];
+
+        let lines = build_testcase_breakdown(&data, &testcases);
+        let rendered: Vec<String> = lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect::<String>())
+            .collect();
+
+        assert!(rendered.iter().any(|l| l.contains("Testcase 1")));
+        assert!(rendered.iter().any(|l| l.contains("Testcase 2")));
+        // Each case's own input, not the other case's.
+        let tc1_pos = rendered.iter().position(|l| l.contains("Testcase 1")).unwrap();
+        let tc2_pos = rendered.iter().position(|l| l.contains("Testcase 2")).unwrap();
+        assert!(rendered[tc1_pos..tc2_pos].iter().any(|l| l.contains("[1,1,2]") && !l.contains("3,3")));
+        assert!(rendered[tc2_pos..].iter().any(|l| l.contains("[1,1,2,3,3]")));
+        // Case 2's stdout is "1\n2\n" -- two separate print()s -- not
+        // flattened together with case 1's.
+        assert!(rendered[tc2_pos..].iter().any(|l| l.trim() == "1"));
+        assert!(rendered[tc2_pos..].iter().any(|l| l.trim() == "2"));
+    }
+
+    fn render(lines: &[Line<'static>]) -> Vec<String> {
+        lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect::<String>())
+            .collect()
+    }
+
+    #[test]
+    fn submit_case_block_shows_failing_case_like_run_breakdown() {
+        // Matches the real Submit response the user pasted: Wrong Answer,
+        // 0/168, single failing testcase, no runtime/memory (N/A).
+        let body = r#"{
+            "status_code": 11,
+            "status_msg": "Wrong Answer",
+            "last_testcase": "[1,1,2]",
+            "expected_output": "[1,2]",
+            "code_output": ["[1,1,2]"],
+            "total_correct": 0,
+            "total_testcases": 168,
+            "state": "SUCCESS"
+        }"#;
+        let resp: CheckResponse = serde_json::from_str(body).unwrap();
+        let data = ResultData::from_check(&resp);
+        let lines = build_submit_case_block(&data);
+        let rendered = render(&lines);
+
+        assert!(rendered.iter().any(|l| l.contains("Testcase") && l.contains('\u{2718}')));
+        assert!(rendered.iter().any(|l| l.trim() == "[1,1,2]"));
+        assert!(rendered.iter().any(|l| l.contains("Expected:")));
+    }
+
+    #[test]
+    fn submit_case_block_empty_when_accepted() {
+        let body = r#"{
+            "status_code": 10,
+            "status_msg": "Accepted",
+            "total_correct": 168,
+            "total_testcases": 168,
+            "state": "SUCCESS"
+        }"#;
+        let resp: CheckResponse = serde_json::from_str(body).unwrap();
+        let data = ResultData::from_check(&resp);
+        assert!(build_submit_case_block(&data).is_empty());
+    }
+
+    #[test]
+    fn runtime_error_surfaces_in_result_lines() {
+        // Captured from a real interpret_solution round trip that raised
+        // ZeroDivisionError -- previously this field wasn't deserialized
+        // at all, so nothing but "Runtime Error" showed.
+        let body = r#"{
+            "status_code": 15,
+            "status_msg": "Runtime Error",
+            "runtime_error": "Line 3: ZeroDivisionError: division by zero",
+            "full_runtime_error": "ZeroDivisionError: division by zero\nLine 3 in deleteDuplicates",
+            "state": "SUCCESS"
+        }"#;
+        let resp: CheckResponse = serde_json::from_str(body).unwrap();
+        let data = ResultData::from_check(&resp);
+
+        assert_eq!(
+            data.runtime_error.as_deref(),
+            Some("ZeroDivisionError: division by zero\nLine 3 in deleteDuplicates")
+        );
+
+        let lines = build_result_lines(&data, ResultKind::Run, &[]);
+        let rendered = render(&lines);
+        assert!(rendered.iter().any(|l| l.contains("Runtime Error:")));
+        assert!(rendered.iter().any(|l| l.contains("ZeroDivisionError")));
+    }
+
+    #[test]
+    fn percentile_shown_when_present_omitted_when_zero() {
+        assert_eq!(percentile_suffix(Some(42.5)), " (beats 42.5%)");
+        assert_eq!(percentile_suffix(Some(0.0)), "");
+        assert_eq!(percentile_suffix(None), "");
     }
 }

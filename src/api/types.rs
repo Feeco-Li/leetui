@@ -130,7 +130,19 @@ pub struct CheckResponse {
     pub status_memory: Option<String>,
     pub compile_error: Option<String>,
     pub full_compile_error: Option<String>,
+    /// Short/full runtime error text (e.g. an uncaught exception traceback).
+    /// Previously not deserialized at all, so a crash showed no detail
+    /// beyond the bare "Runtime Error" status.
+    pub runtime_error: Option<String>,
+    pub full_runtime_error: Option<String>,
     pub correct_answer: Option<bool>,
+    /// One char per sample testcase ('1' pass / '0' fail), only present on
+    /// Run/interpret responses.
+    pub compare_result: Option<String>,
+    /// Only populated for accepted Submit responses, comparing against
+    /// other accepted submissions.
+    pub runtime_percentile: Option<f64>,
+    pub memory_percentile: Option<f64>,
 }
 
 // User status types
