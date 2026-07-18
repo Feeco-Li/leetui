@@ -116,7 +116,7 @@ impl ListsState {
                 ListsAction::None
             }
             KeyCode::Char('l') => self.toggle_expand(),
-            KeyCode::Enter => self.handle_enter(),
+            KeyCode::Enter | KeyCode::Char('o') => self.handle_enter(),
             KeyCode::Char('n') => {
                 self.create_mode = true;
                 self.create_input.clear();
@@ -298,7 +298,7 @@ pub fn render_lists(frame: &mut Frame, area: Rect, state: &mut ListsState) {
         vec![
             ("j/k", "Navigate"),
             ("l", "Expand/collapse"),
-            ("Enter", "Open problem"),
+            ("Enter/o", "Open problem"),
             ("n", "New List"),
             ("d", "Delete"),
             ("q/Esc", "Back"),
