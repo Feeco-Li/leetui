@@ -361,12 +361,11 @@ impl App {
                     ("r", "Run code"),
                     ("s", "Submit code"),
                     ("c", "Commit & push solution"),
-                    ("b/Esc", "Back to list"),
+                    ("b/q/Esc", "Back to list"),
                 ],
                 Screen::Result(_) => vec![
                     ("j/k/\u{2191}/\u{2193}", "Scroll"),
-                    ("b/Esc", "Back to problem"),
-                    ("q", "Quit"),
+                    ("b/q/Esc", "Back to problem"),
                 ],
                 Screen::Lists(state) => {
                     if state.viewing_list.is_some() {

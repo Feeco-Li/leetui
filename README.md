@@ -81,16 +81,27 @@ Press `?` on any screen for the full keybinding reference. Here are the essentia
 
 ### Problem Detail
 
-| Key         | Action                      |
-| ----------- | --------------------------- |
-| `j` / `k`   | Scroll                      |
-| `d` / `u`   | Half page down / up         |
-| `o`         | Scaffold & open in editor   |
-| `r`         | Run code (sample cases)     |
-| `s`         | Submit solution (all cases) |
-| `c`         | Git commit & push solution  |
-| `a`         | Add to list                 |
-| `b` / `Esc` | Back                        |
+| Key               | Action                       |
+| ----------------- | ----------------------------- |
+| `j` / `k`         | Scroll                       |
+| `d` / `u`         | Half page down / up          |
+| `o`               | Scaffold & open in editor    |
+| `r`               | Run code (sample cases)      |
+| `s`               | Submit solution (all cases)  |
+| `c`               | Git commit & push solution   |
+| `a`               | Add to list                  |
+| `b` / `q` / `Esc` | Back to problem list         |
+
+`r` and `s` submit your code to LeetCode's servers (same as clicking Run/Submit on the website) and open the result screen.
+
+### Run / Submit Result
+
+| Key               | Action                       |
+| ----------------- | ----------------------------- |
+| `j` / `k`         | Scroll                       |
+| `b` / `q` / `Esc` | Back to problem detail       |
+
+Any `print()`/debug output from your code shows up in a **Stdout** section on this screen.
 
 ### Lists
 
