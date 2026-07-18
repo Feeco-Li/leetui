@@ -208,6 +208,43 @@ pub struct FavoriteQuestion {
     pub title_slug: String,
 }
 
+// Per-list question fetch (fallback for custom lists, see
+// `FAVORITE_QUESTION_LIST_QUERY`).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FavoriteQuestionListData {
+    pub favorite_question_list: Option<FavoriteQuestionListResult>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FavoriteQuestionListResult {
+    pub questions: Vec<FavoriteQuestionNode>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FavoriteQuestionNode {
+    pub question_frontend_id: String,
+    pub title: String,
+    pub title_slug: String,
+    /// "SOLVED" / "TO_DO" (uppercase enum), unlike the lowercase "ac" /
+    /// "notac" `FavoriteQuestion::status` elsewhere -- normalized via
+    /// `normalize_favorite_status`.
+    pub status: Option<String>,
+}
+
+/// Maps this query's uppercase status enum ("SOLVED" / "TO_DO") to the
+/// lowercase "ac" / "notac" convention `FavoriteQuestion::status` and the UI
+/// already use elsewhere.
+pub fn normalize_favorite_status(status: Option<&str>) -> Option<String> {
+    match status {
+        Some("SOLVED") => Some("ac".to_string()),
+        Some("ATTEMPTED") => Some("notac".to_string()),
+        _ => None,
+    }
+}
+
 // Aggregated user stats
 #[derive(Debug, Clone)]
 pub struct UserStats {

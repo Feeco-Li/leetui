@@ -45,6 +45,7 @@ pub enum ApiResult {
     Favorites(Result<Vec<FavoriteList>>),
     ListMutation(Result<()>, String), // (result, success_message)
     PopupFavorites(Result<Vec<FavoriteList>>),
+    ListQuestions(String, Result<Vec<crate::api::types::FavoriteQuestion>>), // (id_hash, result)
 }
 
 pub struct AddToListPopup {
@@ -731,6 +732,9 @@ impl App {
                     } => {
                         self.start_remove_from_list(&id_hash, &question_id);
                     }
+                    ListsAction::FetchListQuestions(id_hash) => {
+                        self.start_fetch_list_questions(&id_hash);
+                    }
                     ListsAction::None => {}
                 }
             }
@@ -849,6 +853,7 @@ impl App {
                 self.error_overlay = Some(format!("Search failed: {e}"));
             }
             ApiResult::Favorites(Ok(lists)) => {
+                let mut needs_question_fetch = Vec::new();
                 if let Screen::Lists(ref mut state) = self.screen {
                     state.lists = lists;
                     state.loading = false;
@@ -856,6 +861,18 @@ impl App {
                     if !state.lists.is_empty() && state.list_table_state.selected().is_none() {
                         state.list_table_state.select(Some(0));
                     }
+                    // The batch query never returns nested `questions` for
+                    // custom lists, so their real "Problems" count has to be
+                    // backfilled with a per-list fetch.
+                    needs_question_fetch = state
+                        .lists
+                        .iter()
+                        .filter(|l| l.questions.is_empty())
+                        .map(|l| l.id_hash.clone())
+                        .collect();
+                }
+                for id_hash in needs_question_fetch {
+                    self.start_fetch_list_questions(&id_hash);
                 }
             }
             ApiResult::Favorites(Err(e)) => {
@@ -882,6 +899,33 @@ impl App {
             ApiResult::PopupFavorites(Err(e)) => {
                 self.add_to_list_popup = None;
                 self.error_overlay = Some(format!("Failed to load lists: {e}"));
+            }
+            ApiResult::ListQuestions(id_hash, Ok(questions)) => {
+                if let Screen::Lists(ref mut state) = self.screen {
+                    let idx = state.lists.iter().position(|l| l.id_hash == id_hash);
+                    if let Some(idx) = idx {
+                        let is_empty = questions.is_empty();
+                        state.lists[idx].questions = questions;
+                        // Only touch the "viewing a list" spinner/selection
+                        // if this fetch is for the list currently open --
+                        // this result may just be a background backfill of
+                        // another list's Problems count.
+                        if state.viewing_list == Some(idx) {
+                            state.problems_loading = false;
+                            if !is_empty {
+                                state.problem_table_state.select(Some(0));
+                            }
+                        }
+                    }
+                }
+            }
+            ApiResult::ListQuestions(_, Err(e)) => {
+                if let Screen::Lists(ref mut state) = self.screen {
+                    if state.problems_loading {
+                        state.problems_loading = false;
+                        state.problems_error = Some(format!("{e}"));
+                    }
+                }
             }
         }
     }
@@ -961,6 +1005,17 @@ impl App {
         tokio::spawn(async move {
             let result = client.fetch_favorites().await;
             let _ = tx.send(ApiResult::Favorites(result));
+        });
+    }
+
+    fn start_fetch_list_questions(&self, id_hash: &str) {
+        let client = self.api_client.clone();
+        let tx = self.api_tx.clone();
+        let id_hash = id_hash.to_string();
+
+        tokio::spawn(async move {
+            let result = client.fetch_favorite_questions(&id_hash).await;
+            let _ = tx.send(ApiResult::ListQuestions(id_hash, result));
         });
     }
 

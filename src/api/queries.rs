@@ -82,6 +82,26 @@ query favoritesList {
 }
 "#;
 
+/// LeetCode's `favoritesLists` query above only returns non-empty nested
+/// `questions` for the built-in "Favorite" list -- custom user-created lists
+/// come back with an empty array regardless of their real contents. The
+/// website itself fetches a custom list's problems separately via this
+/// per-list query (keyed by the list's `idHash` as `favoriteSlug`), so we
+/// have to do the same as a fallback when `questions` comes back empty.
+pub const FAVORITE_QUESTION_LIST_QUERY: &str = r#"
+query favoriteQuestionList($favoriteSlug: String!, $skip: Int, $limit: Int) {
+  favoriteQuestionList(favoriteSlug: $favoriteSlug, skip: $skip, limit: $limit) {
+    questions {
+      questionFrontendId
+      title
+      titleSlug
+      status
+    }
+    totalLength
+  }
+}
+"#;
+
 pub const USER_PROFILE_QUERY: &str = r#"
 query getUserProfile($username: String!) {
   matchedUser(username: $username) {

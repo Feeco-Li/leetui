@@ -3,7 +3,7 @@ use reqwest::{Client, RequestBuilder, cookie::Jar};
 use serde_json::json;
 use std::sync::Arc;
 
-use super::queries::{FAVORITES_LIST_QUERY, GLOBAL_DATA_QUERY, PROBLEM_LIST_QUERY, QUESTION_DETAIL_QUERY, USER_PROFILE_QUERY};
+use super::queries::{FAVORITES_LIST_QUERY, FAVORITE_QUESTION_LIST_QUERY, GLOBAL_DATA_QUERY, PROBLEM_LIST_QUERY, QUESTION_DETAIL_QUERY, USER_PROFILE_QUERY};
 use super::types::*;
 
 const LEETCODE_GRAPHQL: &str = "https://leetcode.com/graphql";
@@ -365,6 +365,48 @@ impl LeetCodeClient {
             .unwrap_or_default();
 
         Ok(lists)
+    }
+
+    /// Fetches a single list's problems directly (see
+    /// `FAVORITE_QUESTION_LIST_QUERY` for why this is needed as a fallback
+    /// for custom lists).
+    pub async fn fetch_favorite_questions(&self, favorite_slug: &str) -> Result<Vec<FavoriteQuestion>> {
+        let body = json!({
+            "query": FAVORITE_QUESTION_LIST_QUERY,
+            "variables": {
+                "favoriteSlug": favorite_slug,
+                "skip": 0,
+                "limit": 5000,
+            }
+        });
+
+        let resp = self
+            .auth_request(self.client.post(LEETCODE_GRAPHQL))
+            .json(&body)
+            .send()
+            .await
+            .context("Failed to fetch list questions")?;
+
+        let data: GraphQLResponse<FavoriteQuestionListData> = resp
+            .json()
+            .await
+            .context("Failed to parse list questions response")?;
+
+        let questions = data
+            .data
+            .and_then(|d| d.favorite_question_list)
+            .map(|f| f.questions)
+            .unwrap_or_default();
+
+        Ok(questions
+            .into_iter()
+            .map(|q| FavoriteQuestion {
+                question_id: q.question_frontend_id,
+                status: normalize_favorite_status(q.status.as_deref()),
+                title: q.title,
+                title_slug: q.title_slug,
+            })
+            .collect())
     }
 
     pub async fn create_favorite_list(&self, name: &str) -> Result<()> {

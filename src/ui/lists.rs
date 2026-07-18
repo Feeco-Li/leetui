@@ -21,6 +21,8 @@ pub struct ListsState {
     // Problem view within a list
     pub viewing_list: Option<usize>,
     pub problem_table_state: TableState,
+    pub problems_loading: bool,
+    pub problems_error: Option<String>,
     // Create mode
     pub create_mode: bool,
     pub create_input: String,
@@ -38,6 +40,8 @@ impl ListsState {
             list_table_state: TableState::default(),
             viewing_list: None,
             problem_table_state: TableState::default(),
+            problems_loading: false,
+            problems_error: None,
             create_mode: false,
             create_input: String::new(),
             confirm_delete: false,
@@ -93,9 +97,17 @@ impl ListsState {
                 if let Some(idx) = self.list_table_state.selected() {
                     self.viewing_list = Some(idx);
                     self.problem_table_state = TableState::default();
+                    self.problems_error = None;
                     if let Some(list) = self.lists.get(idx) {
                         if !list.questions.is_empty() {
                             self.problem_table_state.select(Some(0));
+                            self.problems_loading = false;
+                        } else {
+                            // The batch favorites query never returns nested
+                            // `questions` for custom lists, so fetch this
+                            // one directly.
+                            self.problems_loading = true;
+                            return ListsAction::FetchListQuestions(list.id_hash.clone());
                         }
                     }
                 }
@@ -120,6 +132,8 @@ impl ListsState {
         match key.code {
             KeyCode::Esc | KeyCode::Char('b') => {
                 self.viewing_list = None;
+                self.problems_loading = false;
+                self.problems_error = None;
                 ListsAction::None
             }
             KeyCode::Char('j') | KeyCode::Down => {
@@ -236,6 +250,7 @@ pub enum ListsAction {
     CreateList(String),
     DeleteList(String),
     RemoveProblem { id_hash: String, question_id: String },
+    FetchListQuestions(String),
 }
 
 pub fn render_lists(frame: &mut Frame, area: Rect, state: &mut ListsState) {
@@ -387,6 +402,22 @@ fn render_list_table(frame: &mut Frame, area: Rect, state: &mut ListsState) {
 }
 
 fn render_problem_table(frame: &mut Frame, area: Rect, state: &mut ListsState) {
+    if state.problems_loading {
+        let spinner = ["\u{280b}", "\u{2819}", "\u{2839}", "\u{2838}", "\u{283c}", "\u{2834}", "\u{2826}", "\u{2827}", "\u{2807}", "\u{280f}"];
+        let s = spinner[state.spinner_frame % spinner.len()];
+        let loading = Paragraph::new(format!(" {s} Loading problems..."))
+            .style(Style::default().fg(Color::Yellow));
+        frame.render_widget(loading, area);
+        return;
+    }
+
+    if let Some(ref err) = state.problems_error {
+        let error = Paragraph::new(format!(" Error: {err}"))
+            .style(Style::default().fg(Color::Red));
+        frame.render_widget(error, area);
+        return;
+    }
+
     let list = match state.viewing_list.and_then(|i| state.lists.get(i)) {
         Some(l) => l,
         None => return,
