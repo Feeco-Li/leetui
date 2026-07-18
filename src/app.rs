@@ -68,6 +68,7 @@ pub struct App {
     pub add_to_list_popup: Option<AddToListPopup>,
     saved_home: Option<HomeState>,
     saved_lists: Option<ListsState>,
+    saved_run_result: Option<ResultState>,
     api_client: LeetCodeClient,
     api_tx: mpsc::UnboundedSender<ApiResult>,
     api_rx: mpsc::UnboundedReceiver<ApiResult>,
@@ -104,6 +105,7 @@ impl App {
             add_to_list_popup: None,
             saved_home: None,
             saved_lists: None,
+            saved_run_result: None,
             api_client,
             api_tx,
             api_rx,
@@ -360,14 +362,20 @@ impl App {
                     ("o", "Scaffold & open in editor"),
                     ("a", "Add to list"),
                     ("r", "Run code"),
-                    ("s", "Submit code"),
-                    ("c", "Commit & push solution"),
                     ("b/q/Esc", "Back to list"),
                 ],
-                Screen::Result(_) => vec![
-                    ("j/k/\u{2191}/\u{2193}", "Scroll"),
-                    ("b/q/Esc", "Back to problem"),
-                ],
+                Screen::Result(state) => match state.kind {
+                    ResultKind::Run => vec![
+                        ("j/k/\u{2191}/\u{2193}", "Scroll"),
+                        ("s", "Submit code"),
+                        ("b/q/Esc", "Back to problem"),
+                    ],
+                    ResultKind::Submit => vec![
+                        ("j/k/\u{2191}/\u{2193}", "Scroll"),
+                        ("c", "Commit & push solution"),
+                        ("b/q/Esc", "Back to run"),
+                    ],
+                },
                 Screen::Lists(_) => vec![
                     ("j/k/\u{2191}/\u{2193}", "Navigate"),
                     ("l", "Expand/collapse list"),
@@ -671,34 +679,60 @@ impl App {
                         };
                         self.start_run_code(&detail);
                     }
-                    DetailAction::SubmitCode => {
-                        let detail = if let Screen::Detail(s) = &self.screen {
-                            s.detail.clone()
-                        } else {
-                            unreachable!()
-                        };
-                        self.start_submit_code(&detail);
-                    }
                     DetailAction::AddToList(question_id) => {
                         self.open_add_to_list_popup(question_id);
-                    }
-                    DetailAction::Commit => {
-                        let detail = if let Screen::Detail(s) = &self.screen {
-                            s.detail.clone()
-                        } else {
-                            unreachable!()
-                        };
-                        self.do_git_commit(&detail, terminal, events)?;
                     }
                     DetailAction::None => {}
                 }
             }
             Screen::Result(state) => match state.handle_key(key) {
                 ResultAction::Back => {
-                    let detail = state.detail.clone();
-                    self.screen = Screen::Detail(DetailState::new(detail));
+                    let (kind, detail) = if let Screen::Result(s) = &self.screen {
+                        (s.kind, s.detail.clone())
+                    } else {
+                        unreachable!()
+                    };
+                    if matches!(kind, ResultKind::Submit) {
+                        if let Some(run_result) = self.saved_run_result.take() {
+                            self.screen = Screen::Result(run_result);
+                        } else {
+                            self.screen = Screen::Detail(DetailState::new(detail));
+                        }
+                    } else {
+                        self.screen = Screen::Detail(DetailState::new(detail));
+                    }
                 }
                 ResultAction::Quit => self.should_quit = true,
+                ResultAction::SubmitCode => {
+                    let (problem_title, detail) = if let Screen::Result(s) = &self.screen {
+                        (s.problem_title.clone(), s.detail.clone())
+                    } else {
+                        unreachable!()
+                    };
+                    // Stash the current Run result so "back" from the
+                    // Submit screen we're about to show returns to it,
+                    // rather than skipping straight to the problem detail.
+                    let old = std::mem::replace(
+                        &mut self.screen,
+                        Screen::Result(ResultState::new(
+                            ResultKind::Submit,
+                            problem_title,
+                            detail.clone(),
+                        )),
+                    );
+                    if let Screen::Result(run_result) = old {
+                        self.saved_run_result = Some(run_result);
+                    }
+                    self.start_submit_code(&detail);
+                }
+                ResultAction::Commit => {
+                    let detail = if let Screen::Result(s) = &self.screen {
+                        s.detail.clone()
+                    } else {
+                        unreachable!()
+                    };
+                    self.do_git_commit(&detail, terminal, events)?;
+                }
                 ResultAction::None => {}
             },
             Screen::Lists(state) => {

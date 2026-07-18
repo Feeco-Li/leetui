@@ -85,11 +85,9 @@ impl DetailState {
             KeyCode::Char('o') => DetailAction::Scaffold(self.detail.title_slug.clone()),
             KeyCode::Char('a') => DetailAction::AddToList(self.detail.question_id.clone()),
             KeyCode::Char('r') => DetailAction::RunCode,
-            KeyCode::Char('s') => DetailAction::SubmitCode,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 DetailAction::Quit
             }
-            KeyCode::Char('c') => DetailAction::Commit,
             _ => DetailAction::None,
         }
     }
@@ -107,8 +105,6 @@ pub enum DetailAction {
     Scaffold(String),
     AddToList(String),
     RunCode,
-    SubmitCode,
-    Commit,
 }
 
 pub fn render_detail(frame: &mut Frame, area: Rect, state: &mut DetailState) {
@@ -179,8 +175,6 @@ pub fn render_detail(frame: &mut Frame, area: Rect, state: &mut DetailState) {
             ("o", "Open"),
             ("a", "Add to List"),
             ("r", "Run"),
-            ("s", "Submit"),
-            ("c", "Commit & Push"),
             ("b/q/Esc", "Back"),
             ("?", "Help"),
         ],

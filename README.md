@@ -87,19 +87,28 @@ Press `?` on any screen for the full keybinding reference. Here are the essentia
 | `d` / `u`         | Half page down / up          |
 | `o`               | Scaffold & open in editor    |
 | `r`               | Run code (sample cases)      |
-| `s`               | Submit solution (all cases)  |
-| `c`               | Git commit & push solution   |
 | `a`               | Add to list                  |
 | `b` / `q` / `Esc` | Back to problem list         |
 
-`r` and `s` submit your code to LeetCode's servers (same as clicking Run/Submit on the website) and open the result screen.
+`r` submits your code to LeetCode's servers to run it against the sample cases (same as clicking Run on the website) and opens the result screen. Submitting against all cases, and committing your solution, are both one level deeper -- see below.
 
-### Run / Submit Result
+### Run Result
 
 | Key               | Action                       |
 | ----------------- | ----------------------------- |
 | `j` / `k`         | Scroll                       |
+| `s`               | Submit solution (all cases)  |
 | `b` / `q` / `Esc` | Back to problem detail       |
+
+### Submit Result
+
+| Key               | Action                       |
+| ----------------- | ----------------------------- |
+| `j` / `k`         | Scroll                       |
+| `c`               | Git commit & push solution   |
+| `b` / `q` / `Esc` | Back to run result           |
+
+`q` always goes back exactly one step: Submit Result → Run Result → Problem Detail → problem list.
 
 Each testcase is shown as its own block: a pass/fail marker, the input, any `print()`/debug output, your output, and (if it didn't match) the expected output. Run shows every sample case; Submit only reports the first case that failed, since that's all LeetCode returns. Runtime errors show the full traceback, and accepted submissions show a runtime/memory percentile when LeetCode provides one.
 
@@ -107,14 +116,14 @@ Each testcase is shown as its own block: a pass/fail marker, the input, any `pri
 
 | Key       | Action                              |
 | --------- | ------------------------------------ |
-| `j` / `k` | Navigate                            |
-| `l`       | Expand/collapse list                |
-| `Enter`   | Open problem (or expand/collapse a list) |
-| `n`       | Create new list                     |
-| `d`       | Delete list / remove problem        |
-| `q` / `Esc` | Back                               |
+| `j` / `k`   | Navigate                              |
+| `l`         | Expand/collapse list                  |
+| `Enter`/`o` | Open problem (or expand/collapse a list) |
+| `n`         | Create new list                       |
+| `d`         | Delete list / remove problem          |
+| `q` / `Esc` | Back                                   |
 
-Lists expand in place -- press `l` on a list to show its problems indented underneath it, without leaving the lists screen. Navigate through both lists and their problems with `j`/`k`, and press `Enter` on a problem to open it directly.
+Lists expand in place -- press `l` on a list to show its problems indented underneath it, without leaving the lists screen. Navigate through both lists and their problems with `j`/`k`, and press `Enter` or `o` on a problem to open it directly.
 
 ## Configuration
 

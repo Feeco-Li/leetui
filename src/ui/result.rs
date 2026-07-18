@@ -174,6 +174,11 @@ impl ResultState {
                 self.scroll(-1);
                 ResultAction::None
             }
+            // Submit and Commit&Push are staged one level deeper than the
+            // problem detail page now: 's' submits from the Run screen,
+            // 'c' commits from the Submit screen.
+            KeyCode::Char('s') if matches!(self.kind, ResultKind::Run) => ResultAction::SubmitCode,
+            KeyCode::Char('c') if matches!(self.kind, ResultKind::Submit) => ResultAction::Commit,
             _ => ResultAction::None,
         }
     }
@@ -188,6 +193,8 @@ pub enum ResultAction {
     None,
     Back,
     Quit,
+    SubmitCode,
+    Commit,
 }
 
 pub fn render_result(frame: &mut Frame, area: Rect, state: &mut ResultState) {
@@ -258,16 +265,23 @@ pub fn render_result(frame: &mut Frame, area: Rect, state: &mut ResultState) {
     }
 
     // Status bar
-    render_status_bar(
-        frame,
-        layout[2],
-        &[
+    let hints: Vec<(&str, &str)> = match state.kind {
+        ResultKind::Run => vec![
             ("j/k", "Scroll"),
-            ("b/q/Esc", "Back"),
+            ("s", "Submit"),
+            ("b/q/Esc", "Back to problem"),
             ("Ctrl+C", "Quit"),
             ("?", "Help"),
         ],
-    );
+        ResultKind::Submit => vec![
+            ("j/k", "Scroll"),
+            ("c", "Commit & Push"),
+            ("b/q/Esc", "Back to run"),
+            ("Ctrl+C", "Quit"),
+            ("?", "Help"),
+        ],
+    };
+    render_status_bar(frame, layout[2], &hints);
 }
 
 fn build_result_lines(data: &ResultData, kind: ResultKind, testcases: &[String]) -> Vec<Line<'static>> {
