@@ -113,8 +113,7 @@ impl ResultState {
 
     pub fn handle_key(&mut self, key: KeyEvent) -> ResultAction {
         match key.code {
-            KeyCode::Char('b') | KeyCode::Esc => ResultAction::Back,
-            KeyCode::Char('q') => ResultAction::Quit,
+            KeyCode::Char('b') | KeyCode::Char('q') | KeyCode::Esc => ResultAction::Back,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 ResultAction::Quit
             }
@@ -215,8 +214,8 @@ pub fn render_result(frame: &mut Frame, area: Rect, state: &mut ResultState) {
         layout[2],
         &[
             ("j/k", "Scroll"),
-            ("b/Esc", "Back"),
-            ("q", "Quit"),
+            ("b/q/Esc", "Back"),
+            ("Ctrl+C", "Quit"),
             ("?", "Help"),
         ],
     );
