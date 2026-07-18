@@ -65,7 +65,7 @@ impl DetailState {
 
     pub fn handle_key(&mut self, key: KeyEvent) -> DetailAction {
         match key.code {
-            KeyCode::Char('b') | KeyCode::Esc => DetailAction::Back,
+            KeyCode::Char('b') | KeyCode::Char('q') | KeyCode::Esc => DetailAction::Back,
             KeyCode::Char('j') | KeyCode::Down => {
                 self.scroll(1);
                 DetailAction::None
@@ -181,7 +181,7 @@ pub fn render_detail(frame: &mut Frame, area: Rect, state: &mut DetailState) {
             ("r", "Run"),
             ("s", "Submit"),
             ("c", "Commit & Push"),
-            ("b/Esc", "Back"),
+            ("b/q/Esc", "Back"),
             ("?", "Help"),
         ],
     );
