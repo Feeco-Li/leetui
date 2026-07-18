@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
-    layout::{Constraint, Layout, Rect},
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, TableState},
@@ -66,6 +66,9 @@ pub struct HomeState {
     pub error_message: Option<String>,
     pub spinner_frame: usize,
     pub user_stats: Option<UserStats>,
+    pub confirm_quit: bool,
+    /// 0 = "Yes", 1 = "No"
+    pub confirm_quit_selected: usize,
 }
 
 impl HomeState {
@@ -83,6 +86,8 @@ impl HomeState {
             error_message: None,
             spinner_frame: 0,
             user_stats: None,
+            confirm_quit: false,
+            confirm_quit_selected: 0,
         }
     }
 
@@ -138,6 +143,16 @@ impl HomeState {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> HomeAction {
+        // Ctrl+C is the universal force-quit escape hatch -- it bypasses
+        // the confirmation dialog (and any other mode) entirely.
+        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            return HomeAction::Quit;
+        }
+
+        if self.confirm_quit {
+            return self.handle_confirm_quit_key(key);
+        }
+
         if self.filter.open {
             return self.handle_filter_key(key);
         }
@@ -147,7 +162,11 @@ impl HomeState {
         }
 
         match key.code {
-            KeyCode::Char('q') => HomeAction::Quit,
+            KeyCode::Char('q') => {
+                self.confirm_quit = true;
+                self.confirm_quit_selected = 0;
+                HomeAction::None
+            }
             KeyCode::Char('j') | KeyCode::Down => {
                 self.move_selection(1);
                 HomeAction::None
@@ -201,8 +220,35 @@ impl HomeState {
             }
             KeyCode::Char('L') => HomeAction::Lists,
             KeyCode::Char('S') => HomeAction::Settings,
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            _ => HomeAction::None,
+        }
+    }
+
+    fn handle_confirm_quit_key(&mut self, key: KeyEvent) -> HomeAction {
+        match key.code {
+            KeyCode::Esc => {
+                self.confirm_quit = false;
+                HomeAction::None
+            }
+            KeyCode::Enter => {
+                self.confirm_quit = false;
+                if self.confirm_quit_selected == 0 {
+                    HomeAction::Quit
+                } else {
+                    HomeAction::None
+                }
+            }
+            KeyCode::Left | KeyCode::Right | KeyCode::Char('h') | KeyCode::Char('l') | KeyCode::Tab => {
+                self.confirm_quit_selected = 1 - self.confirm_quit_selected;
+                HomeAction::None
+            }
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                self.confirm_quit = false;
                 HomeAction::Quit
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') => {
+                self.confirm_quit = false;
+                HomeAction::None
             }
             _ => HomeAction::None,
         }
@@ -345,7 +391,13 @@ pub fn render_home(frame: &mut Frame, area: Rect, state: &mut HomeState) {
     }
 
     // Status bar
-    let hints = if state.search_mode {
+    let hints = if state.confirm_quit {
+        vec![
+            ("\u{2190}/\u{2192}", "Toggle"),
+            ("Enter", "Confirm"),
+            ("Esc", "Cancel"),
+        ]
+    } else if state.search_mode {
         vec![
             ("Enter", "Apply"),
             ("Esc", "Cancel"),
@@ -371,6 +423,56 @@ pub fn render_home(frame: &mut Frame, area: Rect, state: &mut HomeState) {
     if state.filter.open {
         render_filter_popup(frame, area, &state.filter);
     }
+
+    // Quit confirmation overlay
+    if state.confirm_quit {
+        render_confirm_quit(frame, area, state.confirm_quit_selected);
+    }
+}
+
+fn render_confirm_quit(frame: &mut Frame, area: Rect, selected: usize) {
+    let w = 30u16.min(area.width.saturating_sub(4));
+    let h = 6u16;
+    let x = area.x + (area.width.saturating_sub(w)) / 2;
+    let y = area.y + (area.height.saturating_sub(h)) / 2;
+    let overlay = Rect::new(x, y, w, h);
+
+    frame.render_widget(Clear, overlay);
+
+    let button_style = |is_selected: bool| {
+        if is_selected {
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        }
+    };
+
+    let buttons = Line::from(vec![
+        Span::styled(" Yes ", button_style(selected == 0)),
+        Span::raw("   "),
+        Span::styled(" No ", button_style(selected == 1)),
+    ]);
+
+    let text = vec![
+        Line::from(""),
+        Line::from("Quit leetui?"),
+        Line::from(""),
+        buttons,
+    ];
+
+    let p = Paragraph::new(text)
+        .alignment(Alignment::Center)
+        .block(
+            Block::default()
+                .title(" Confirm Quit ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Yellow)),
+        )
+        .style(Style::default().fg(Color::White));
+    frame.render_widget(p, overlay);
 }
 
 fn render_stats_header(frame: &mut Frame, area: Rect, stats: &UserStats) {
