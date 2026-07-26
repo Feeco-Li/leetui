@@ -218,7 +218,8 @@ impl HomeState {
                     HomeAction::None
                 }
             }
-            KeyCode::Char('L') => HomeAction::Lists,
+            KeyCode::Char('l') => HomeAction::Lists,
+            KeyCode::Char('L') => HomeAction::Login,
             KeyCode::Char('S') => HomeAction::Settings,
             _ => HomeAction::None,
         }
@@ -353,6 +354,7 @@ pub enum HomeAction {
     AddToList(String),
     Settings,
     Lists,
+    Login,
 }
 
 pub fn render_home(frame: &mut Frame, area: Rect, state: &mut HomeState) {
@@ -411,7 +413,8 @@ pub fn render_home(frame: &mut Frame, area: Rect, state: &mut HomeState) {
             ("a", "Add to List"),
             ("/", "Search"),
             ("f", "Filter"),
-            ("L", "Lists"),
+            ("l", "Lists"),
+            ("L", "Login"),
             ("S", "Settings"),
             ("q", "Quit"),
             ("?", "Help"),

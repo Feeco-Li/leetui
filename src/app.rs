@@ -230,7 +230,7 @@ impl App {
                 frame.render_widget(p, overlay_area);
             } else if popup.lists.is_empty() {
                 let p = Paragraph::new(
-                    "\n No lists found.\n Create one from Lists (L) first.\n\n Esc: Close",
+                    "\n No lists found.\n Create one from Lists (l) first.\n\n Esc: Close",
                 )
                 .block(
                     Block::default()
@@ -350,7 +350,8 @@ impl App {
                             ("a", "Add to list"),
                             ("/", "Search"),
                             ("f", "Filter by difficulty"),
-                            ("L", "Browse lists"),
+                            ("l", "Browse lists"),
+                            ("L", "Login"),
                             ("S", "Settings"),
                             ("q", "Quit"),
                         ]
@@ -649,6 +650,9 @@ impl App {
                         None => SetupState::new(),
                     };
                     self.screen = Screen::Setup(setup_state);
+                }
+                HomeAction::Login => {
+                    self.browser_login();
                 }
                 HomeAction::None => {}
             },
