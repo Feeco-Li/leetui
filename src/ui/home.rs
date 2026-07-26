@@ -407,7 +407,6 @@ pub fn render_home(frame: &mut Frame, area: Rect, state: &mut HomeState) {
         ]
     } else {
         vec![
-            ("j/k", "Navigate"),
             ("Enter", "View"),
             ("o", "Open"),
             ("a", "Add to List"),
