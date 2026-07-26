@@ -170,7 +170,6 @@ pub fn render_detail(frame: &mut Frame, area: Rect, state: &mut DetailState) {
         frame,
         layout[2],
         &[
-            ("j/k", "Scroll"),
             ("d/u", "Half page"),
             ("o", "Open"),
             ("a", "Add to List"),

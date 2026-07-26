@@ -267,14 +267,12 @@ pub fn render_result(frame: &mut Frame, area: Rect, state: &mut ResultState) {
     // Status bar
     let hints: Vec<(&str, &str)> = match state.kind {
         ResultKind::Run => vec![
-            ("j/k", "Scroll"),
             ("s", "Submit"),
             ("b/q/Esc", "Back to problem"),
             ("Ctrl+C", "Quit"),
             ("?", "Help"),
         ],
         ResultKind::Submit => vec![
-            ("j/k", "Scroll"),
             ("c", "Commit & Push"),
             ("b/q/Esc", "Back to run"),
             ("Ctrl+C", "Quit"),

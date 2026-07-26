@@ -296,7 +296,6 @@ pub fn render_lists(frame: &mut Frame, area: Rect, state: &mut ListsState) {
         vec![("y", "Confirm"), ("any", "Cancel")]
     } else {
         vec![
-            ("j/k", "Navigate"),
             ("l", "Expand/collapse"),
             ("Enter/o", "Open problem"),
             ("n", "New List"),
