@@ -8,7 +8,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use tokio::sync::mpsc;
 
 use crate::api::client::LeetCodeClient;
@@ -1552,42 +1552,16 @@ impl App {
         Ok(())
     }
 
+    /// Always opens the login page rather than silently trusting whatever
+    /// (possibly stale) cookie is already in the browser; the actual
+    /// cookie harvest happens on retry, once the user has confirmed login.
     fn browser_login(&mut self) {
-        let domains = vec!["leetcode.com".to_string()];
-        let cookies = match rookie::load(Some(domains)) {
-            Ok(c) => c,
-            Err(_) => {
-                let _ = Command::new("open")
-                    .arg("https://leetcode.com/accounts/login/")
-                    .spawn();
-                self.login_waiting = true;
-                return;
-            }
-        };
-
-        let session = cookies
-            .iter()
-            .find(|c| c.name == "LEETCODE_SESSION")
-            .map(|c| c.value.clone());
-        let csrf = cookies
-            .iter()
-            .find(|c| c.name == "csrftoken")
-            .map(|c| c.value.clone());
-        let cf_clearance = cookies
-            .iter()
-            .find(|c| c.name == "cf_clearance")
-            .map(|c| c.value.clone());
-
-        if session.is_none() || csrf.is_none() {
-            // No cookies found — open browser and wait for retry
-            let _ = Command::new("open")
-                .arg("https://leetcode.com/accounts/login/")
-                .spawn();
-            self.login_waiting = true;
-            return;
-        }
-
-        self.apply_login_cookies(session, csrf, cf_clearance);
+        let _ = Command::new("open")
+            .arg("https://leetcode.com/accounts/login/")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        self.login_waiting = true;
     }
 
     fn retry_browser_login(&mut self) {
