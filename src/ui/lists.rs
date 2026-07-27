@@ -387,14 +387,14 @@ fn render_outline(frame: &mut Frame, area: Rect, state: &mut ListsState) {
                 Style::default().fg(Color::DarkGray),
             ))));
         } else {
-            for (j, q) in list.questions.iter().enumerate() {
+            for q in list.questions.iter() {
                 let status = match q.status.as_deref() {
                     Some("ac") => Span::styled("\u{2714}", Style::default().fg(Color::Green)),
                     Some("notac") => Span::styled("\u{25cf}", Style::default().fg(Color::Yellow)),
                     _ => Span::raw(" "),
                 };
                 items.push(ListItem::new(Line::from(vec![
-                    Span::raw(format!("      {}. ", j + 1)),
+                    Span::raw(format!("      {}. ", q.question_id)),
                     status,
                     Span::raw(" "),
                     Span::styled(q.title.clone(), Style::default().fg(Color::White)),

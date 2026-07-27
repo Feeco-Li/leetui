@@ -934,6 +934,8 @@ impl App {
             ApiResult::ListQuestions(id_hash, Ok(questions)) => {
                 if let Screen::Lists(ref mut state) = self.screen {
                     if let Some(idx) = state.lists.iter().position(|l| l.id_hash == id_hash) {
+                        let mut questions = questions;
+                        questions.sort_by_key(|q| q.question_id.parse::<u32>().unwrap_or(u32::MAX));
                         state.lists[idx].questions = questions;
                         state.loading_questions.remove(&idx);
                         state.question_errors.remove(&idx);
