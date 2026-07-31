@@ -179,6 +179,10 @@ impl ResultState {
             // 'c' commits from the Submit screen.
             KeyCode::Char('s') if matches!(self.kind, ResultKind::Run) => ResultAction::SubmitCode,
             KeyCode::Char('c') if matches!(self.kind, ResultKind::Submit) => ResultAction::Commit,
+            KeyCode::Char('r') if matches!(self.kind, ResultKind::Run) => ResultAction::RerunCode,
+            KeyCode::Char('s') if matches!(self.kind, ResultKind::Submit) => {
+                ResultAction::ResubmitCode
+            }
             _ => ResultAction::None,
         }
     }
@@ -195,6 +199,8 @@ pub enum ResultAction {
     Quit,
     SubmitCode,
     Commit,
+    RerunCode,
+    ResubmitCode,
 }
 
 pub fn render_result(frame: &mut Frame, area: Rect, state: &mut ResultState) {
@@ -267,12 +273,14 @@ pub fn render_result(frame: &mut Frame, area: Rect, state: &mut ResultState) {
     // Status bar
     let hints: Vec<(&str, &str)> = match state.kind {
         ResultKind::Run => vec![
+            ("r", "Re-run"),
             ("s", "Submit"),
             ("b/q/Esc", "Back to problem"),
             ("Ctrl+C", "Quit"),
             ("?", "Help"),
         ],
         ResultKind::Submit => vec![
+            ("s", "Re-submit"),
             ("c", "Commit & Push"),
             ("b/q/Esc", "Back to run"),
             ("Ctrl+C", "Quit"),
@@ -386,8 +394,10 @@ fn percentile_suffix(percentile: Option<f64>) -> String {
 fn build_submit_case_block(data: &ResultData) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
 
-    let has_content =
-        data.last_testcase.is_some() || data.expected_output.is_some() || data.code_output.is_some();
+    let has_content = data.last_testcase.is_some()
+        || data.expected_output.is_some()
+        || data.code_output.is_some()
+        || data.stdout.is_some();
     if !has_content {
         return lines;
     }

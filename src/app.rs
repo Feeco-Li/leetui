@@ -368,11 +368,13 @@ impl App {
                 Screen::Result(state) => match state.kind {
                     ResultKind::Run => vec![
                         ("j/k/\u{2191}/\u{2193}", "Scroll"),
+                        ("r", "Re-run code"),
                         ("s", "Submit code"),
                         ("b/q/Esc", "Back to problem"),
                     ],
                     ResultKind::Submit => vec![
                         ("j/k/\u{2191}/\u{2193}", "Scroll"),
+                        ("s", "Re-submit code"),
                         ("c", "Commit & push solution"),
                         ("b/q/Esc", "Back to run"),
                     ],
@@ -736,6 +738,22 @@ impl App {
                         unreachable!()
                     };
                     self.do_git_commit(&detail, terminal, events)?;
+                }
+                ResultAction::RerunCode => {
+                    let detail = if let Screen::Result(s) = &self.screen {
+                        s.detail.clone()
+                    } else {
+                        unreachable!()
+                    };
+                    self.start_run_code(&detail);
+                }
+                ResultAction::ResubmitCode => {
+                    let detail = if let Screen::Result(s) = &self.screen {
+                        s.detail.clone()
+                    } else {
+                        unreachable!()
+                    };
+                    self.start_submit_code(&detail);
                 }
                 ResultAction::None => {}
             },
