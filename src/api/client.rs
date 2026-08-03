@@ -358,11 +358,23 @@ impl LeetCodeClient {
             .await
             .context("Failed to parse favorites response")?;
 
-        let lists = data
-            .data
-            .and_then(|d| d.favorites_lists)
-            .map(|f| f.all_favorites)
+        let data = data.data.unwrap_or(FavoritesListData {
+            my_created_favorite_list: None,
+            my_collected_favorite_list: None,
+        });
+
+        let mut lists = data
+            .my_created_favorite_list
+            .map(|l| l.favorites)
             .unwrap_or_default();
+        let mut collected = data
+            .my_collected_favorite_list
+            .map(|l| l.favorites)
+            .unwrap_or_default();
+        for list in &mut collected {
+            list.is_watched = true;
+        }
+        lists.extend(collected);
 
         Ok(lists)
     }

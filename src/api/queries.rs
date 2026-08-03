@@ -60,25 +60,33 @@ query {
 }
 "#;
 
-/// Deliberately does *not* request the nested `questions` field that
-/// LeetCode's schema technically allows here: for the built-in "Favorite"
-/// list it returns stale/phantom data (observed: 52 questions from what
-/// looks like a legacy star-bookmark system, when the actual list is
-/// empty on leetcode.com itself), and it's simply always empty for custom
-/// lists. `FAVORITE_QUESTION_LIST_QUERY` below -- the same per-list query
-/// the website's own problem-list page uses -- is the only reliable
-/// source for a list's contents, so every list's problems are always
-/// fetched that way instead.
+/// `favoritesLists.allFavorites` (LeetCode's older batch query) only ever
+/// returns lists the current user created -- it does not include lists
+/// they've saved/collected from other users (leetcode.com's "Saved by
+/// me" section), no matter what fields are requested, and its nested
+/// `questions` field returns stale/phantom data for the built-in
+/// "Favorite" list (observed: 52 questions from what looks like a legacy
+/// star-bookmark system, when the actual list is empty on leetcode.com
+/// itself). `myCreatedFavoriteList`/`myCollectedFavoriteList` are the
+/// pair leetcode.com's own problem-list sidebar uses to populate "My
+/// Lists" and "Saved by me" respectively; `idHash: slug` aliases the
+/// field back to the name the rest of this app expects. Problems are
+/// still always fetched per-list via `FAVORITE_QUESTION_LIST_QUERY`
+/// (the same one the website uses) since neither field here returns
+/// nested questions.
 pub const FAVORITES_LIST_QUERY: &str = r#"
 query favoritesList {
-  favoritesLists {
-    allFavorites {
-      idHash
+  myCreatedFavoriteList {
+    favorites {
+      idHash: slug
       name
-      description
-      viewCount
-      creator
-      isWatched
+      isPublicFavorite
+    }
+  }
+  myCollectedFavoriteList {
+    favorites {
+      idHash: slug
+      name
       isPublicFavorite
     }
   }

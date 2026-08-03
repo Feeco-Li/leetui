@@ -189,13 +189,14 @@ pub struct DifficultyCount {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FavoritesListData {
-    pub favorites_lists: Option<FavoritesLists>,
+    pub my_created_favorite_list: Option<FavoriteBriefList>,
+    pub my_collected_favorite_list: Option<FavoriteBriefList>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FavoritesLists {
-    pub all_favorites: Vec<FavoriteList>,
+pub struct FavoriteBriefList {
+    pub favorites: Vec<FavoriteList>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -203,11 +204,12 @@ pub struct FavoritesLists {
 pub struct FavoriteList {
     pub id_hash: String,
     pub name: String,
-    pub description: Option<String>,
-    pub view_count: i32,
-    pub creator: String,
-    pub is_watched: bool,
     pub is_public_favorite: bool,
+    /// Not part of the batch favorites response -- set by
+    /// `Client::fetch_favorites` based on which of
+    /// `myCreatedFavoriteList`/`myCollectedFavoriteList` a list came
+    /// from, so the UI can split "My Lists" from "Saved by Me".
+    pub is_watched: bool,
     /// Never populated by the batch favorites query (see
     /// `FAVORITES_LIST_QUERY`) -- always filled in afterward via a
     /// per-list `FAVORITE_QUESTION_LIST_QUERY` fetch.
