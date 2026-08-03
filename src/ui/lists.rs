@@ -9,7 +9,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::api::types::FavoriteList;
+use crate::api::types::{FavoriteList, FavoriteQuestion};
 
 use super::status_bar::render_status_bar;
 
@@ -71,6 +71,16 @@ pub struct ListsState {
     pub create_input: String,
     // Confirm delete
     pub confirm_delete: bool,
+    /// Hides solved problems in expanded lists, so a long list (e.g. a
+    /// 150-problem "saved by me" list) only shows what's left to do.
+    pub hide_solved: bool,
+    /// Rows visible in the outline viewport, set by `render_outline` each
+    /// frame -- used to size `J`/`K` half-page jumps.
+    pub visible_height: usize,
+    // Search: filters expanded lists' problems by title/number. Stays
+    // applied after Enter closes typing, like Home's `/` search.
+    pub search_mode: bool,
+    pub search_query: String,
 }
 
 impl ListsState {
@@ -87,7 +97,23 @@ impl ListsState {
             create_mode: false,
             create_input: String::new(),
             confirm_delete: false,
+            hide_solved: false,
+            visible_height: 0,
+            search_mode: false,
+            search_query: String::new(),
         }
+    }
+
+    /// Whether a problem passes the active hide-solved / search filters.
+    fn question_visible(&self, q: &FavoriteQuestion) -> bool {
+        if self.hide_solved && q.status.as_deref() == Some("ac") {
+            return false;
+        }
+        if self.search_query.is_empty() {
+            return true;
+        }
+        let query = self.search_query.to_lowercase();
+        q.title.to_lowercase().contains(&query) || q.question_id == self.search_query
     }
 
     fn build_rows(&self) -> Vec<Row> {
@@ -108,6 +134,9 @@ impl ListsState {
                 rows.push(Row::List(i));
                 if self.expanded.contains(&i) {
                     for j in 0..self.lists[i].questions.len() {
+                        if !self.question_visible(&self.lists[i].questions[j]) {
+                            continue;
+                        }
                         rows.push(Row::Problem(i, j));
                     }
                 }
@@ -163,6 +192,9 @@ impl ListsState {
         if self.create_mode {
             return self.handle_create_key(key);
         }
+        if self.search_mode {
+            return self.handle_search_key(key);
+        }
 
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => ListsAction::Back,
@@ -172,6 +204,33 @@ impl ListsState {
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 self.move_cursor(-1);
+                ListsAction::None
+            }
+            KeyCode::Char('J') => {
+                let half = (self.visible_height / 2).max(1) as i32;
+                self.move_cursor(half);
+                ListsAction::None
+            }
+            KeyCode::Char('K') => {
+                let half = (self.visible_height / 2).max(1) as i32;
+                self.move_cursor(-half);
+                ListsAction::None
+            }
+            KeyCode::Char('g') => {
+                self.jump_to_top();
+                ListsAction::None
+            }
+            KeyCode::Char('G') => {
+                self.jump_to_bottom();
+                ListsAction::None
+            }
+            KeyCode::Char('h') => {
+                self.hide_solved = !self.hide_solved;
+                self.clamp_cursor();
+                ListsAction::None
+            }
+            KeyCode::Char('/') => {
+                self.search_mode = true;
                 ListsAction::None
             }
             KeyCode::Char('l') => self.toggle_expand(),
@@ -186,9 +245,10 @@ impl ListsState {
         }
     }
 
-    /// Steps the cursor to the next selectable (non-section-header) row in
-    /// the given direction. A no-op if there isn't one, so the cursor
-    /// never lands on or gets stuck past a section header at the edges.
+    /// Steps the cursor `delta.abs()` selectable (non-section-header) rows
+    /// in the given direction -- `delta` of +-1 for single-row j/k moves,
+    /// larger magnitudes for J/K half-page jumps. Stops early at the first
+    /// or last selectable row rather than overshooting out of bounds.
     fn move_cursor(&mut self, delta: i32) {
         let rows = self.build_rows();
         let len = rows.len();
@@ -196,17 +256,35 @@ impl ListsState {
             return;
         }
         let step: i32 = if delta >= 0 { 1 } else { -1 };
+        let count = delta.unsigned_abs();
         let mut next = self.cursor as i32;
-        loop {
+        let mut moved = 0;
+        while moved < count {
             let candidate = next + step;
             if candidate < 0 || candidate >= len as i32 {
-                return;
+                break;
             }
             next = candidate;
             if !matches!(rows[next as usize], Row::Section(_)) {
                 self.cursor = next as usize;
-                return;
+                moved += 1;
             }
+        }
+    }
+
+    /// Jumps to the first selectable row (`g`).
+    fn jump_to_top(&mut self) {
+        let rows = self.build_rows();
+        if let Some(idx) = rows.iter().position(|r| !matches!(r, Row::Section(_))) {
+            self.cursor = idx;
+        }
+    }
+
+    /// Jumps to the last selectable row (`G`).
+    fn jump_to_bottom(&mut self) {
+        let rows = self.build_rows();
+        if let Some(idx) = rows.iter().rposition(|r| !matches!(r, Row::Section(_))) {
+            self.cursor = idx;
         }
     }
 
@@ -311,6 +389,33 @@ impl ListsState {
         }
     }
 
+    fn handle_search_key(&mut self, key: KeyEvent) -> ListsAction {
+        match key.code {
+            KeyCode::Esc => {
+                self.search_mode = false;
+                self.search_query.clear();
+                self.clamp_cursor();
+                ListsAction::None
+            }
+            KeyCode::Enter => {
+                self.search_mode = false;
+                self.clamp_cursor();
+                ListsAction::None
+            }
+            KeyCode::Char(c) => {
+                self.search_query.push(c);
+                self.clamp_cursor();
+                ListsAction::None
+            }
+            KeyCode::Backspace => {
+                self.search_query.pop();
+                self.clamp_cursor();
+                ListsAction::None
+            }
+            _ => ListsAction::None,
+        }
+    }
+
     fn handle_confirm_delete(&mut self, key: KeyEvent) -> ListsAction {
         match key.code {
             KeyCode::Char('y') | KeyCode::Char('Y') => {
@@ -368,10 +473,16 @@ pub fn render_lists(frame: &mut Frame, area: Rect, state: &mut ListsState) {
         vec![("Enter", "Create"), ("Esc", "Cancel")]
     } else if state.confirm_delete {
         vec![("y", "Confirm"), ("any", "Cancel")]
+    } else if state.search_mode {
+        vec![("Enter", "Apply"), ("Esc", "Cancel"), ("type", "Filter")]
     } else {
         vec![
             ("l", "Expand/collapse"),
             ("Enter/o", "Open problem"),
+            ("g/G", "Top/bottom"),
+            ("J/K", "Half page"),
+            ("h", "Hide solved"),
+            ("/", "Search"),
             ("n", "New List"),
             ("d", "Delete"),
             ("q/Esc", "Back"),
@@ -396,13 +507,16 @@ pub fn render_lists(frame: &mut Frame, area: Rect, state: &mut ListsState) {
 fn render_title_bar(frame: &mut Frame, area: Rect, state: &ListsState) {
     let mine_count = state.lists.iter().filter(|l| Section::Mine.matches(l)).count();
     let saved_count = state.lists.len() - mine_count;
-    let count_text = if saved_count > 0 {
+    let mut count_text = if saved_count > 0 {
         format!("{mine_count} lists, {saved_count} saved")
     } else {
         format!("{mine_count} lists")
     };
+    if state.hide_solved {
+        count_text.push_str("  [-solved]");
+    }
 
-    let spans = vec![
+    let mut spans = vec![
         Span::styled(
             " Lists ",
             Style::default()
@@ -414,11 +528,23 @@ fn render_title_bar(frame: &mut Frame, area: Rect, state: &ListsState) {
         Span::styled(count_text, Style::default().fg(Color::DarkGray)),
     ];
 
+    if state.search_mode || !state.search_query.is_empty() {
+        spans.push(Span::raw("  "));
+        spans.push(Span::styled(
+            format!("/{}", state.search_query),
+            Style::default().fg(Color::Cyan),
+        ));
+        if state.search_mode {
+            spans.push(Span::styled("\u{258e}", Style::default().fg(Color::Cyan)));
+        }
+    }
+
     let title = Paragraph::new(Line::from(spans)).style(Style::default().bg(Color::Black));
     frame.render_widget(title, area);
 }
 
 fn render_outline(frame: &mut Frame, area: Rect, state: &mut ListsState) {
+    state.visible_height = area.height as usize;
     let mut items: Vec<ListItem<'static>> = Vec::new();
 
     for section in Section::ALL {
@@ -484,7 +610,23 @@ fn render_outline(frame: &mut Frame, area: Rect, state: &mut ListsState) {
                     Style::default().fg(Color::DarkGray),
                 ))));
             } else {
-                for q in list.questions.iter() {
+                let visible: Vec<&FavoriteQuestion> = list
+                    .questions
+                    .iter()
+                    .filter(|q| state.question_visible(q))
+                    .collect();
+                if visible.is_empty() {
+                    let msg = if !state.search_query.is_empty() {
+                        "       (no matches)"
+                    } else {
+                        "       (all solved)"
+                    };
+                    items.push(ListItem::new(Line::from(Span::styled(
+                        msg,
+                        Style::default().fg(Color::DarkGray),
+                    ))));
+                }
+                for q in visible {
                     let status = match q.status.as_deref() {
                         Some("ac") => Span::styled("\u{2714}", Style::default().fg(Color::Green)),
                         Some("notac") => {

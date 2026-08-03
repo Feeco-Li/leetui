@@ -381,6 +381,10 @@ impl App {
                 },
                 Screen::Lists(_) => vec![
                     ("j/k/\u{2191}/\u{2193}", "Navigate"),
+                    ("g/G", "Jump to top / bottom"),
+                    ("J/K", "Half page down / up"),
+                    ("h", "Toggle hide solved"),
+                    ("/", "Search problems"),
                     ("l", "Expand/collapse list"),
                     ("Enter/o", "Open problem / toggle list"),
                     ("n", "Create new list"),
