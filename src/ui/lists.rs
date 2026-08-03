@@ -18,13 +18,40 @@ const SPINNER: [&str; 10] = [
     "\u{2807}", "\u{280f}",
 ];
 
-/// One line in the flattened outline: a list header, or a problem nested
-/// under an expanded list. Recomputed from `lists` + `expanded` on demand
-/// rather than stored, so it can never drift out of sync with them.
+/// One line in the flattened outline: a section header, a list header, or
+/// a problem nested under an expanded list. Recomputed from `lists` +
+/// `expanded` on demand rather than stored, so it can never drift out of
+/// sync with them.
 #[derive(Clone, Copy)]
 enum Row {
+    Section(Section),
     List(usize),
     Problem(usize, usize),
+}
+
+/// Lists LeetCode's `favoritesLists` query returns are split by the
+/// `isWatched` flag: lists the user created themselves ("My Lists") vs.
+/// public/curated lists they've saved from other users without owning
+/// them ("Saved by Me").
+#[derive(Clone, Copy, PartialEq)]
+enum Section {
+    Mine,
+    Saved,
+}
+
+impl Section {
+    const ALL: [Section; 2] = [Section::Mine, Section::Saved];
+
+    fn title(self) -> &'static str {
+        match self {
+            Section::Mine => "My Lists",
+            Section::Saved => "Saved by Me",
+        }
+    }
+
+    fn matches(self, list: &FavoriteList) -> bool {
+        list.is_watched == (self == Section::Saved)
+    }
 }
 
 pub struct ListsState {
@@ -65,11 +92,24 @@ impl ListsState {
 
     fn build_rows(&self) -> Vec<Row> {
         let mut rows = Vec::new();
-        for (i, list) in self.lists.iter().enumerate() {
-            rows.push(Row::List(i));
-            if self.expanded.contains(&i) {
-                for j in 0..list.questions.len() {
-                    rows.push(Row::Problem(i, j));
+        for section in Section::ALL {
+            let indices: Vec<usize> = self
+                .lists
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| section.matches(l))
+                .map(|(i, _)| i)
+                .collect();
+            if indices.is_empty() {
+                continue;
+            }
+            rows.push(Row::Section(section));
+            for i in indices {
+                rows.push(Row::List(i));
+                if self.expanded.contains(&i) {
+                    for j in 0..self.lists[i].questions.len() {
+                        rows.push(Row::Problem(i, j));
+                    }
                 }
             }
         }
@@ -85,15 +125,34 @@ impl ListsState {
     fn current_list(&self) -> Option<&FavoriteList> {
         match self.current_row()? {
             Row::List(i) | Row::Problem(i, _) => self.lists.get(i),
+            Row::Section(_) => None,
         }
     }
 
+    /// Clamps the cursor into bounds and, since section headers aren't
+    /// selectable rows, nudges it onto the nearest list/problem row.
     pub fn clamp_cursor(&mut self) {
-        let len = self.build_rows().len();
+        let rows = self.build_rows();
+        let len = rows.len();
         if len == 0 {
             self.cursor = 0;
-        } else if self.cursor >= len {
+            return;
+        }
+        if self.cursor >= len {
             self.cursor = len - 1;
+        }
+        if matches!(rows[self.cursor], Row::Section(_)) {
+            if let Some(idx) = rows[self.cursor..]
+                .iter()
+                .position(|r| !matches!(r, Row::Section(_)))
+            {
+                self.cursor += idx;
+            } else if let Some(idx) = rows[..self.cursor]
+                .iter()
+                .rposition(|r| !matches!(r, Row::Section(_)))
+            {
+                self.cursor = idx;
+            }
         }
     }
 
@@ -127,13 +186,28 @@ impl ListsState {
         }
     }
 
+    /// Steps the cursor to the next selectable (non-section-header) row in
+    /// the given direction. A no-op if there isn't one, so the cursor
+    /// never lands on or gets stuck past a section header at the edges.
     fn move_cursor(&mut self, delta: i32) {
-        let len = self.build_rows().len();
+        let rows = self.build_rows();
+        let len = rows.len();
         if len == 0 {
             return;
         }
-        let next = (self.cursor as i32 + delta).clamp(0, len as i32 - 1) as usize;
-        self.cursor = next;
+        let step: i32 = if delta >= 0 { 1 } else { -1 };
+        let mut next = self.cursor as i32;
+        loop {
+            let candidate = next + step;
+            if candidate < 0 || candidate >= len as i32 {
+                return;
+            }
+            next = candidate;
+            if !matches!(rows[next as usize], Row::Section(_)) {
+                self.cursor = next as usize;
+                return;
+            }
+        }
     }
 
     fn row_index_of_list(&self, list_idx: usize) -> Option<usize> {
@@ -147,7 +221,7 @@ impl ListsState {
     fn toggle_expand(&mut self) -> ListsAction {
         let list_idx = match self.current_row() {
             Some(Row::List(i)) | Some(Row::Problem(i, _)) => i,
-            None => return ListsAction::None,
+            Some(Row::Section(_)) | None => return ListsAction::None,
         };
 
         if self.expanded.remove(&list_idx) {
@@ -183,7 +257,7 @@ impl ListsState {
                 .map(|q| ListsAction::OpenDetail(q.title_slug.clone()))
                 .unwrap_or(ListsAction::None),
             Some(Row::List(_)) => self.toggle_expand(),
-            None => ListsAction::None,
+            Some(Row::Section(_)) | None => ListsAction::None,
         }
     }
 
@@ -203,7 +277,7 @@ impl ListsState {
                     })
                 })
                 .unwrap_or(ListsAction::None),
-            None => ListsAction::None,
+            Some(Row::Section(_)) | None => ListsAction::None,
         }
     }
 
@@ -320,6 +394,14 @@ pub fn render_lists(frame: &mut Frame, area: Rect, state: &mut ListsState) {
 }
 
 fn render_title_bar(frame: &mut Frame, area: Rect, state: &ListsState) {
+    let mine_count = state.lists.iter().filter(|l| Section::Mine.matches(l)).count();
+    let saved_count = state.lists.len() - mine_count;
+    let count_text = if saved_count > 0 {
+        format!("{mine_count} lists, {saved_count} saved")
+    } else {
+        format!("{mine_count} lists")
+    };
+
     let spans = vec![
         Span::styled(
             " Lists ",
@@ -329,10 +411,7 @@ fn render_title_bar(frame: &mut Frame, area: Rect, state: &ListsState) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" "),
-        Span::styled(
-            format!("{} lists", state.lists.len()),
-            Style::default().fg(Color::DarkGray),
-        ),
+        Span::styled(count_text, Style::default().fg(Color::DarkGray)),
     ];
 
     let title = Paragraph::new(Line::from(spans)).style(Style::default().bg(Color::Black));
@@ -342,63 +421,84 @@ fn render_title_bar(frame: &mut Frame, area: Rect, state: &ListsState) {
 fn render_outline(frame: &mut Frame, area: Rect, state: &mut ListsState) {
     let mut items: Vec<ListItem<'static>> = Vec::new();
 
-    for (i, list) in state.lists.iter().enumerate() {
-        let expanded = state.expanded.contains(&i);
-        let chevron = if expanded { "\u{25be}" } else { "\u{25b8}" };
-        let vis = if list.is_public_favorite {
-            Span::styled("Public", Style::default().fg(Color::Green))
-        } else {
-            Span::styled("Private", Style::default().fg(Color::DarkGray))
-        };
-
-        items.push(ListItem::new(Line::from(vec![
-            Span::styled(format!(" {chevron} "), Style::default().fg(Color::Cyan)),
-            Span::styled(
-                list.name.clone(),
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
-            ),
-            Span::raw("  "),
-            Span::styled(
-                format!("{} problems", list.questions.len()),
-                Style::default().fg(Color::DarkGray),
-            ),
-            Span::raw("  "),
-            vis,
-        ])));
-
-        if !expanded {
+    for section in Section::ALL {
+        let indices: Vec<usize> = state
+            .lists
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| section.matches(l))
+            .map(|(i, _)| i)
+            .collect();
+        if indices.is_empty() {
             continue;
         }
 
-        if state.loading_questions.contains(&i) {
-            let s = SPINNER[state.spinner_frame % SPINNER.len()];
-            items.push(ListItem::new(Line::from(Span::styled(
-                format!("      {s} Loading problems..."),
-                Style::default().fg(Color::Yellow),
-            ))));
-        } else if let Some(err) = state.question_errors.get(&i) {
-            items.push(ListItem::new(Line::from(Span::styled(
-                format!("      Error: {err}"),
-                Style::default().fg(Color::Red),
-            ))));
-        } else if list.questions.is_empty() {
-            items.push(ListItem::new(Line::from(Span::styled(
-                "      (no problems)",
-                Style::default().fg(Color::DarkGray),
-            ))));
-        } else {
-            for q in list.questions.iter() {
-                let status = match q.status.as_deref() {
-                    Some("ac") => Span::styled("\u{2714}", Style::default().fg(Color::Green)),
-                    Some("notac") => Span::styled("\u{25cf}", Style::default().fg(Color::Yellow)),
-                    _ => Span::raw(" "),
-                };
-                items.push(ListItem::new(Line::from(vec![
-                    Span::raw(format!("      {}. ", q.question_id)),
-                    status,
-                    Span::raw(" "),
-                    Span::styled(q.title.clone(), Style::default().fg(Color::White)),
-                ])));
+        items.push(ListItem::new(Line::from(Span::styled(
+            format!(" {}", section.title()),
+            Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+        ))));
+
+        for i in indices {
+            let list = &state.lists[i];
+            let expanded = state.expanded.contains(&i);
+            let chevron = if expanded { "\u{25be}" } else { "\u{25b8}" };
+            let vis = if list.is_public_favorite {
+                Span::styled("Public", Style::default().fg(Color::Green))
+            } else {
+                Span::styled("Private", Style::default().fg(Color::DarkGray))
+            };
+
+            items.push(ListItem::new(Line::from(vec![
+                Span::styled(format!("  {chevron} "), Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    list.name.clone(),
+                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                ),
+                Span::raw("  "),
+                Span::styled(
+                    format!("{} problems", list.questions.len()),
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::raw("  "),
+                vis,
+            ])));
+
+            if !expanded {
+                continue;
+            }
+
+            if state.loading_questions.contains(&i) {
+                let s = SPINNER[state.spinner_frame % SPINNER.len()];
+                items.push(ListItem::new(Line::from(Span::styled(
+                    format!("       {s} Loading problems..."),
+                    Style::default().fg(Color::Yellow),
+                ))));
+            } else if let Some(err) = state.question_errors.get(&i) {
+                items.push(ListItem::new(Line::from(Span::styled(
+                    format!("       Error: {err}"),
+                    Style::default().fg(Color::Red),
+                ))));
+            } else if list.questions.is_empty() {
+                items.push(ListItem::new(Line::from(Span::styled(
+                    "       (no problems)",
+                    Style::default().fg(Color::DarkGray),
+                ))));
+            } else {
+                for q in list.questions.iter() {
+                    let status = match q.status.as_deref() {
+                        Some("ac") => Span::styled("\u{2714}", Style::default().fg(Color::Green)),
+                        Some("notac") => {
+                            Span::styled("\u{25cf}", Style::default().fg(Color::Yellow))
+                        }
+                        _ => Span::raw(" "),
+                    };
+                    items.push(ListItem::new(Line::from(vec![
+                        Span::raw(format!("       {}. ", q.question_id)),
+                        status,
+                        Span::raw(" "),
+                        Span::styled(q.title.clone(), Style::default().fg(Color::White)),
+                    ])));
+                }
             }
         }
     }
